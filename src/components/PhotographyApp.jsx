@@ -1,59 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getUrl } from 'aws-amplify/storage';
+import LazyImage from './LazyImage';
 import '@aws-amplify/ui-react/styles.css';
 
 
-const LazyImage = ({ src, alt, onClick }) => {
-    const [isLoaded, setIsLoaded] = useState(false);
-    const [imageSrc, setImageSrc] = useState('');
-    const imgRef = useRef();
-  
-    useEffect(() => {
-      const loadImage = async () => {
-        try {
-          const result = await getUrl({
-            key: src,
-            options: {
-              accessLevel: 'public'
-            }
-          });
-          setImageSrc(result.url);
-          setIsLoaded(true);
-        } catch (error) {
-          console.error('Error loading image:', error);
-        }
-      };
-  
-      loadImage();
-    }, [src]);
-  
-    return (
-      <div ref={imgRef} className="w-64 h-64 relative">
-        {isLoaded ? (
-          <img
-            src={imageSrc}
-            alt={alt}
-            className="w-full h-full object-cover cursor-pointer"
-            onClick={onClick}
-          />
-        ) : (
-          <div className="w-full h-full bg-gray-200 animate-pulse"></div>
-        )}
-      </div>
-    );
-  };
-  
-  const PhotographyApp = ({ signOut, user }) => {
+const PhotographyApp = ({ signOut, user }) => {
     console.log('PhotographyApp rendered', { user });
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [currentSeries, setCurrentSeries] = useState(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [showLeftButton, setShowLeftButton] = useState({});
-  const [showRightButton, setShowRightButton] = useState({});
-
-  const galleryRefs = useRef([]);
-  const fullscreenRef = useRef(null);
+    const [selectedImage, setSelectedImage] = useState(null);
+    const [currentSeries, setCurrentSeries] = useState(null);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [showLeftButton, setShowLeftButton] = useState({});
+    const [showRightButton, setShowRightButton] = useState({});
+  
+    const galleryRefs = useRef([]);
+    const fullscreenRef = useRef(null);
 
   // Placeholder for your actual series and images
   const imageSeries = [
@@ -61,28 +21,23 @@ const LazyImage = ({ src, alt, onClick }) => {
       id: 1,
       name: "Urban Landscapes",
       images: [
-        { id: 1, src: '/api/placeholder/400/300', alt: 'Urban 1' },
-        { id: 2, src: '/api/placeholder/300/400', alt: 'Urban 2' },
-        { id: 3, src: '/api/placeholder/400/300', alt: 'Urban 3' },
-        { id: 4, src: '/api/placeholder/300/400', alt: 'Urban 4' },
-        { id: 5, src: '/api/placeholder/400/300', alt: 'Urban 5' },
+        { id: 1, src: 'public/_DSC4843.jpg', alt: 'Urban 1' }
       ]
     },
     {
       id: 2,
       name: "Nature Close-ups",
       images: [
-        { id: 6, src: '/api/placeholder/400/300', alt: 'Nature 1' },
-        { id: 7, src: '/api/placeholder/300/400', alt: 'Nature 2' },
-        { id: 8, src: '/api/placeholder/400/300', alt: 'Nature 3' },
-        { id: 9, src: '/api/placeholder/300/400', alt: 'Nature 4' },
-        { id: 10, src: '/api/placeholder/400/300', alt: 'Nature 5' },
+        { id: 6, src: 'public/_DSC4850.jpg', alt: 'Nature 1' }
       ]
     },
   ];
 
   useEffect(() => {
     galleryRefs.current = galleryRefs.current.slice(0, imageSeries.length);
+    imageSeries.forEach((_, index) => {
+      updateScrollButtonsVisibility(index);
+    });
   }, [imageSeries]);
 
   useEffect(() => {
@@ -138,7 +93,7 @@ const LazyImage = ({ src, alt, onClick }) => {
 
   const handleScroll = (direction, index) => {
     const gallery = galleryRefs.current[index];
-    const scrollAmount = 300; // Adjust this value as needed
+    const scrollAmount = gallery.clientWidth * 0.8; // Scroll by 80% of the visible width
     if (gallery) {
       if (direction === 'left') {
         gallery.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
@@ -222,26 +177,19 @@ const LazyImage = ({ src, alt, onClick }) => {
         </nav>
       </header>
 
-      {/* Main content */}
       <main className="p-4">
         <h2 className="text-3xl font-bold mb-8">What catches your eye when your surroundings are not loud, fast, crowded, or towering?</h2>
         
-        {/* Image galleries */}
         {imageSeries.map((series, seriesIndex) => (
-          <div key={series.id} className="mb-8 relative"
-               onMouseEnter={() => handleMouseEnter(seriesIndex)}
-               onMouseLeave={handleMouseLeave}>
+          <div key={series.id} className="mb-8 relative">
             <h3 className="text-xl font-semibold mb-4">{series.name}</h3>
             <div 
               ref={el => galleryRefs.current[seriesIndex] = el}
               className="overflow-x-auto whitespace-nowrap pb-4 relative" 
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-              onTouchStart={(e) => handleTouchStart(e, seriesIndex)}
-              onTouchMove={(e) => handleTouchMove(e, seriesIndex)}
-              onTouchEnd={() => handleTouchEnd(seriesIndex)}
               onScroll={() => updateScrollButtonsVisibility(seriesIndex)}
             >
-              <div className="inline-grid grid-flow-col gap-4">
+              <div className="inline-flex gap-4">
                 {series.images.map((image, imageIndex) => (
                   <LazyImage
                     key={image.id}
@@ -272,7 +220,6 @@ const LazyImage = ({ src, alt, onClick }) => {
         ))}
       </main>
 
-      {/* Fullscreen image view */}
       {selectedImage && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center"
@@ -286,7 +233,7 @@ const LazyImage = ({ src, alt, onClick }) => {
           <button onClick={handlePrev} className="absolute left-4 text-white">
             <ChevronLeft size={24} />
           </button>
-          <img src={selectedImage.src} alt={selectedImage.alt} className="max-h-90vh max-w-90vw object-contain" />
+          <img src={selectedImage.src} alt={selectedImage.alt} className="max-h-[90vh] max-w-[90vw] object-contain" />
           <button onClick={handleNext} className="absolute right-4 text-white">
             <ChevronRight size={24} />
           </button>
