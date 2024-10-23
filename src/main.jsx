@@ -7,8 +7,6 @@ import outputs from "../amplify_outputs.json"
 
 Amplify.configure(outputs)
 
-console.log('Main.jsx is running');
-
 try {
   const root = createRoot(document.getElementById('root'));
   root.render(
@@ -16,7 +14,6 @@ try {
       <App />
     </StrictMode>
   );
-  console.log('Root rendered successfully');
 } catch (error) {
   console.error('Error rendering the app:', error);
 }
