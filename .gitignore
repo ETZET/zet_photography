@@ -31,3 +31,6 @@ amplifyconfiguration*
 # aws lambda
 scripts/package
 scripts/lambda_function.zip
+
+# photos
+public/images/
