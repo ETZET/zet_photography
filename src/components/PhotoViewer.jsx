@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import LazyImage from './LazyImage';
 
 const PhotoViewer = ({ photo, photos, onClose, onNext, onPrev }) => {
   if (!photo) return null;
@@ -20,11 +21,12 @@ const PhotoViewer = ({ photo, photos, onClose, onNext, onPrev }) => {
         <ChevronLeft size={32} />
       </button>
       
-      <img 
-        src={photo.src} 
-        alt={photo.title}
-        className="max-h-[90vh] max-w-[90vw] object-contain"
-      />
+      <div className="max-h-[90vh] max-w-[90vw]">
+        <LazyImage 
+          src={photo.src} 
+          alt={photo.title}
+        />
+      </div>
       
       <button 
         onClick={onNext}
