@@ -22,6 +22,10 @@ export const storage = defineStorage({
       allow.authenticated.to(['read','write']),
       allow.guest.to(['read', 'write'])
     ],
+    'public/images/*': [
+      allow.authenticated.to(['read', 'write']),
+      allow.guest.to(['read', 'write'])
+    ],
     'images/*': [
       allow.authenticated.to(['read', 'write']),
       allow.guest.to(['read'])
