@@ -4,17 +4,10 @@ import { data } from './data/resource';
 import { storage } from './storage/resource';
 
 /**
- * @see https://docs.amplify.aws/react/build-a-backend/ to add storage, functions, and more
+ * @see https://docs.amplify.aws/react/build-a-backend/ to add storage, functions, and more/
  */
 const backend = defineBackend({
   auth,
   data,
-  storage
+  storage,
 });
-
-// backend.addOutput({
-//   storage: {
-//     aws_region: "us-east-2",
-//     bucket_name: "etzhou-website-photos"
-//   },
-// });

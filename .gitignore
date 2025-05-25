@@ -27,3 +27,7 @@ dist-ssr
 .amplify
 amplify_outputs*
 amplifyconfiguration*
+
+# aws lambda
+scripts/package
+scripts/lambda_function.zip
