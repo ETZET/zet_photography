@@ -39,13 +39,18 @@ const seriesConfig = [
   }
 ];
 
-// Function to get all image files from S3
+// Updated function to handle the correct path format with public/ prefix
 const getImagesFromS3 = (s3Prefix, imageList) => {
-  return imageList.map((filename, index) => ({
-    id: index + 1,
-    src: `${s3Prefix}/${filename}`,
-    title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-  }));
+  return imageList.map((filename, index) => {
+    // Add the public/ prefix that your S3 bucket uses
+    const fullPath = `public/${s3Prefix}/${filename}`;
+    
+    return {
+      id: index + 1,
+      src: fullPath, // Now correctly formatted as: public/images/flowerdecay/flower0.jpg
+      title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    };
+  });
 };
 
 // Function to initialize all photo series
