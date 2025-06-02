@@ -93,14 +93,6 @@ const LazyImage = ({ src, alt, onClick }) => {
       className="w-full h-full relative"
       onClick={onClick}
     >
-      {/* Loading placeholder */}
-      {(loading || !isInView || !isLoaded || !imageUrl) && (
-        <div className="w-full h-full bg-gray-200 animate-pulse absolute top-0 left-0 flex items-center justify-center">
-          {loading && (
-            <div className="text-gray-500 text-sm">Loading...</div>
-          )}
-        </div>
-      )}
       
       {/* Actual image */}
       {isInView && imageUrl && !error && (
