@@ -1,10 +1,23 @@
 import React from 'react';
-import { Mail } from 'lucide-react';
+import { Mail, Sun } from 'lucide-react';
 import LazyImage from './LazyImage';
 
-const About = () => {
+const About = ({ onNavigateToLogin }) => {
+  const handleLoginClick = () => {
+    onNavigateToLogin();
+  };
+
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col relative">
+      {/* Subtle login icon in top right */}
+      <button
+        onClick={handleLoginClick}
+        className="absolute top-6 right-6 p-2 text-gray-300 hover:text-yellow-400 transition-colors duration-300 hover:rotate-12 transform transition-transform"
+        aria-label="Login"
+      >
+        <Sun size={20} />
+      </button>
+
       <div className="flex flex-col md:flex-row max-w-7xl mx-auto px-6 py-12 gap-12">
         {/* Left column - Image */}
         <div className="w-full md:w-1/3 h-[300px] md:h-[400px]">

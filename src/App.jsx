@@ -3,6 +3,7 @@ import { Instagram, Mail } from 'lucide-react';
 import ScrollableGallery from './components/ScrollableGallery';
 import PhotoViewer from './components/PhotoViewer';
 import AboutPage from './components/AboutPage';
+import LoginPage from './components/LoginPage';
 import { initializePhotoSeries } from './data/photoSeries';
 
 const App = () => {
@@ -10,7 +11,7 @@ const App = () => {
   const [currentSeriesPhotos, setCurrentSeriesPhotos] = useState([]);
   const [photoSeries, setPhotoSeries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState('work'); // 'work' or 'about'
+  const [currentPage, setCurrentPage] = useState('work'); // 'work', 'about', or 'login'
 
   useEffect(() => {
     const loadPhotoSeries = async () => {
@@ -92,7 +93,9 @@ const App = () => {
       </header>
 
       {currentPage === 'about' ? (
-        <AboutPage />
+        <AboutPage onNavigateToLogin={() => setCurrentPage('login')} />
+      ) : currentPage === 'login' ? (
+        <LoginPage onBack={() => setCurrentPage('about')} />
       ) : (
         <>
           <div className="max-w-4xl mx-auto px-6 py-12">
