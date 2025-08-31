@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Instagram, Mail } from 'lucide-react';
+import { Instagram, Mail, LogOut } from 'lucide-react';
 import ScrollableGallery from './components/ScrollableGallery';
 import PhotoViewer from './components/PhotoViewer';
 import AboutPage from './components/AboutPage';
 import LoginPage from './components/LoginPage';
+import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { initializePhotoSeries } from './data/photoSeries';
 
-const App = () => {
+const AppContent = () => {
+  const { isAuthenticated, logout } = useAuth();
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [currentSeriesPhotos, setCurrentSeriesPhotos] = useState([]);
   const [photoSeries, setPhotoSeries] = useState([]);
@@ -81,13 +83,22 @@ const App = () => {
           >
             ABOUT
           </button>
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-center">
             <a href="https://www.instagram.com/e_t_photo/" className="hover:text-gray-600 transition-colors">
               <Instagram size={20} />
             </a>
             <a href="mailto:etetzet@outlook.com" className="hover:text-gray-600 transition-colors">
               <Mail size={20} />
             </a>
+            {isAuthenticated && (
+              <button
+                onClick={logout}
+                className="hover:text-gray-600 transition-colors p-1"
+                aria-label="Logout"
+              >
+                <LogOut size={20} />
+              </button>
+            )}
           </div>
         </nav>
       </header>
@@ -95,7 +106,10 @@ const App = () => {
       {currentPage === 'about' ? (
         <AboutPage onNavigateToLogin={() => setCurrentPage('login')} />
       ) : currentPage === 'login' ? (
-        <LoginPage onBack={() => setCurrentPage('about')} />
+        <LoginPage 
+          onBack={() => setCurrentPage('about')} 
+          onLoginSuccess={() => setCurrentPage('work')}
+        />
       ) : (
         <>
           <div className="max-w-4xl mx-auto px-6 py-12">
@@ -124,6 +138,14 @@ const App = () => {
         onPrev={handlePrev}
       />
     </div>
+  );
+};
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 
