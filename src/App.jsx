@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Instagram, Mail, LogOut } from 'lucide-react';
+import { Instagram, Mail, LogOut, Settings } from 'lucide-react';
 import ScrollableGallery from './components/ScrollableGallery';
 import PhotoViewer from './components/PhotoViewer';
 import AboutPage from './components/AboutPage';
 import LoginPage from './components/LoginPage';
+import GalleryManagement from './components/GalleryManagement';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { initializePhotoSeries } from './data/photoSeries';
 
@@ -13,21 +14,35 @@ const AppContent = () => {
   const [currentSeriesPhotos, setCurrentSeriesPhotos] = useState([]);
   const [photoSeries, setPhotoSeries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState('work'); // 'work', 'about', or 'login'
+  const [currentPage, setCurrentPage] = useState('work'); // 'work', 'about', 'login', or 'manage'
+
+  const loadPhotoSeriesData = async () => {
+    try {
+      setLoading(true);
+      const series = await initializePhotoSeries();
+      setPhotoSeries(series);
+      console.log('Loaded photo series:', series.map(s => ({ title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0 })));
+    } catch (error) {
+      console.error('Error loading photo series:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadPhotoSeries = async () => {
-      try {
-        const series = await initializePhotoSeries();
-        setPhotoSeries(series);
-      } catch (error) {
-        console.error('Error loading photo series:', error);
-      } finally {
-        setLoading(false);
-      }
+    loadPhotoSeriesData();
+  }, []);
+
+  // Function to refresh data (can be called from management page)
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('Refreshing photo series data...');
+      loadPhotoSeriesData();
     };
 
-    loadPhotoSeries();
+    // Listen for custom refresh events
+    window.addEventListener('refreshPhotoSeries', handleRefresh);
+    return () => window.removeEventListener('refreshPhotoSeries', handleRefresh);
   }, []);
   
   const handlePhotoClick = (photo, seriesPhotos) => {
@@ -83,6 +98,14 @@ const AppContent = () => {
           >
             ABOUT
           </button>
+          {isAuthenticated && (
+            <button 
+              onClick={() => setCurrentPage('manage')}
+              className={`hover:text-gray-600 transition-colors ${currentPage === 'manage' ? 'font-medium' : ''}`}
+            >
+              MANAGE
+            </button>
+          )}
           <div className="flex gap-4 items-center">
             <a href="https://www.instagram.com/e_t_photo/" className="hover:text-gray-600 transition-colors">
               <Instagram size={20} />
@@ -110,6 +133,8 @@ const AppContent = () => {
           onBack={() => setCurrentPage('about')} 
           onLoginSuccess={() => setCurrentPage('work')}
         />
+      ) : currentPage === 'manage' ? (
+        <GalleryManagement />
       ) : (
         <>
           <div className="max-w-4xl mx-auto px-6 py-12">
