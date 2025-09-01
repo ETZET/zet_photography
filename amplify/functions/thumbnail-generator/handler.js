@@ -78,6 +78,7 @@ export const handler = async (event) => {
     console.error('Lambda execution error:', error);
     
     throw new Error(`Lambda execution error: ${error.message}`);
+  }
 };
 
 // Helper function to convert stream to buffer
