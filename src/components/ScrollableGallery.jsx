@@ -61,6 +61,7 @@ const ScrollableGallery = ({ series, onPhotoClick }) => {
                   src={photo.src}
                   alt={photo.title}
                   onClick={() => onPhotoClick(photo, series.photos)}
+                  useThumbnail={true}
                 />
               </div>
             );

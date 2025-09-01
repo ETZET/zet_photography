@@ -12,6 +12,16 @@ const schema = a.schema({
       content: a.string(),
     })
     .authorization((allow) => [allow.guest()]),
+
+  // Add REST API for thumbnail generation
+  generateThumbnail: a
+    .mutation()
+    .arguments({
+      objectKey: a.string().required()
+    })
+    .returns(a.json())
+    .handler(a.handler.function('thumbnailGenerator'))
+    .authorization((allow) => [allow.authenticated()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

@@ -11,6 +11,11 @@ export const storage = defineStorage({
       allow.authenticated.to(['read','write']),
       allow.guest.to(['read', 'write'])
     ],
+    // Configuration files - only authenticated users can write
+    'config/*': [
+      allow.guest.to(['read']),
+      allow.authenticated.to(['read', 'write'])
+    ],
     // ✅ TRY THIS: More permissive pattern that should catch all subfolders
     'public/*': [
       allow.guest.to(['read']),

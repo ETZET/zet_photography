@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getUrl } from 'aws-amplify/storage';
+import { ThumbnailService } from '../utils/thumbnailService';
 
-const LazyImage = ({ src, alt, onClick }) => {
+const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
   const [isInView, setIsInView] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
@@ -18,17 +19,67 @@ const LazyImage = ({ src, alt, onClick }) => {
       setError(null);
 
       try {
-        const result = await getUrl({
-          path: src,
-          options: {
-            // Remove accessLevel - it's not used in Gen 2
-            validateObjectExistence: true, // Enable this to check if file exists
-            expiresIn: 3600 // Optional: set expiration (default is 900 seconds)
-          }
-        });
+        let pathToLoad = src;
         
-        setImageUrl(result.url.toString());
-        console.log('Image URL fetched successfully:', result.url.toString());
+        // If thumbnail is requested, try thumbnail first
+        if (useThumbnail) {
+          const thumbnailPath = ThumbnailService.getThumbnailPath(src);
+          
+          try {
+            // Check if thumbnail exists
+            const thumbnailResult = await getUrl({
+              path: thumbnailPath,
+              options: {
+                validateObjectExistence: true,
+                expiresIn: 3600
+              }
+            });
+            
+            pathToLoad = thumbnailPath;
+            setImageUrl(thumbnailResult.url.toString());
+            console.log('Thumbnail URL fetched successfully:', thumbnailResult.url.toString());
+            
+          } catch (thumbnailError) {
+            console.log('Thumbnail not found, generating from original:', thumbnailPath);
+            
+            // Thumbnail doesn't exist, try to generate it
+            try {
+              await ThumbnailService.generateThumbnailForExistingImage(src);
+              
+              // Try loading thumbnail again after generation
+              const newThumbnailResult = await getUrl({
+                path: thumbnailPath,
+                options: {
+                  validateObjectExistence: true,
+                  expiresIn: 3600
+                }
+              });
+              
+              pathToLoad = thumbnailPath;
+              setImageUrl(newThumbnailResult.url.toString());
+              console.log('Generated thumbnail URL fetched successfully:', newThumbnailResult.url.toString());
+              
+            } catch (generationError) {
+              console.log('Failed to generate thumbnail, falling back to original:', generationError);
+              // Fall back to original image
+              pathToLoad = src;
+            }
+          }
+        }
+        
+        // If we haven't set an image URL yet (either no thumbnail requested or fallback needed)
+        if (!imageUrl || pathToLoad === src) {
+          const result = await getUrl({
+            path: pathToLoad,
+            options: {
+              validateObjectExistence: true,
+              expiresIn: 3600
+            }
+          });
+          
+          setImageUrl(result.url.toString());
+          console.log('Image URL fetched successfully:', result.url.toString());
+        }
         
       } catch (err) {
         console.error('Error getting image URL:', err);
@@ -39,7 +90,7 @@ const LazyImage = ({ src, alt, onClick }) => {
     };
 
     fetchImageUrl();
-  }, [src]);
+  }, [src, useThumbnail]);
 
   // Intersection Observer for lazy loading
   useEffect(() => {

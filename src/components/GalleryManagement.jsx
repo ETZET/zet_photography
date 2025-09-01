@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Plus, Trash2, Edit, Save, X, RefreshCw } from 'lucide-react';
 import { uploadData, list } from 'aws-amplify/storage';
 import { initializePhotoSeries, SeriesManager } from '../data/photoSeries';
+import { ThumbnailService } from '../utils/thumbnailService';
+import LazyImage from './LazyImage';
 
 const GalleryManagement = () => {
   const [photoSeries, setPhotoSeries] = useState([]);
@@ -43,25 +45,17 @@ const GalleryManagement = () => {
         // Upload to the selected series' S3 prefix (add public/ prefix)
         const key = `public/${selectedSeries.s3Prefix}/${fileName}`;
         
-        const result = await uploadData({
-          key,
-          data: file,
-          options: {
-            onProgress: ({ transferredBytes, totalBytes }) => {
-              if (totalBytes) {
-                const progress = Math.round((transferredBytes / totalBytes) * 100);
-                setUploadProgress(progress);
-              }
-            },
-          },
-        }).result;
+        // Use ThumbnailService to process upload (uploads both original and thumbnail)
+        const result = await ThumbnailService.processImageUpload(file, key);
+        console.log('Upload result:', result);
 
         // Add image to series configuration in S3
         await SeriesManager.addImageToSeries(selectedSeries.id, fileName);
 
         return {
           fileName,
-          key: result.key,
+          originalPath: result.originalPath,
+          thumbnailPath: result.thumbnailPath,
           success: true
         };
       } catch (error) {
@@ -222,15 +216,23 @@ const GalleryManagement = () => {
                   
                   {selectedSeries.images && selectedSeries.images.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                      {selectedSeries.images.slice(0, 12).map((imageName, index) => (
-                        <div key={index} className="aspect-square bg-gray-100 border border-gray-200 flex items-center justify-center">
-                          <div className="text-center p-2">
-                            <p className="text-xs text-gray-600 break-all">
-                              {imageName}
-                            </p>
+                      {selectedSeries.images.slice(0, 12).map((imageName, index) => {
+                        const imagePath = `public/${selectedSeries.s3Prefix}/${imageName}`;
+                        return (
+                          <div key={index} className="aspect-square bg-gray-100 border border-gray-200 overflow-hidden relative">
+                            <LazyImage
+                              src={imagePath}
+                              alt={imageName}
+                              useThumbnail={true}
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-20 transition-all duration-200 flex items-end">
+                              <p className="text-xs text-white p-2 opacity-0 hover:opacity-100 transition-opacity truncate w-full">
+                                {imageName}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {selectedSeries.images.length > 12 && (
                         <div className="aspect-square bg-gray-50 border border-gray-200 flex items-center justify-center">
                           <p className="text-sm text-gray-500">
