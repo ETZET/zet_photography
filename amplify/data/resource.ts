@@ -1,4 +1,5 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { thumbnailGenerator } from '../functions/thumbnail-generator/resource';
 
 /*== STEP 1 ===============================================================
 The section below creates a Todo database table with a "content" field. Try
@@ -20,7 +21,7 @@ const schema = a.schema({
       objectKey: a.string().required()
     })
     .returns(a.json())
-    .handler(a.handler.function('thumbnailGenerator'))
+    .handler(a.handler.function(thumbnailGenerator))
     .authorization((allow) => [allow.authenticated()]),
 });
 

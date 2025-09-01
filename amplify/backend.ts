@@ -26,3 +26,6 @@ backend.thumbnailGenerator.resources.lambda.addToRolePolicy(
     resources: [`${backend.storage.resources.bucket.bucketArn}/*`],
   })
 );
+
+// Add bucket name as environment variable for the Lambda function
+backend.thumbnailGenerator.addEnvironment('AMPLIFY_STORAGE_BUCKET_NAME', backend.storage.resources.bucket.bucketName);

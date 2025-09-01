@@ -31,12 +31,17 @@ export class ThumbnailService {
   static async generateThumbnailViaLambda(s3ObjectKey) {
     try {
       const client = generateClient();
-      const response = await client.mutations.generateThumbnail({
+      const { data, errors } = await client.mutations.generateThumbnail({
         objectKey: s3ObjectKey
       });
 
-      console.log('Lambda thumbnail generation result:', response);
-      return response;
+      if (errors) {
+        console.error('GraphQL errors:', errors);
+        throw new Error(`GraphQL errors: ${errors.map(e => e.message).join(', ')}`);
+      }
+
+      console.log('Lambda thumbnail generation result:', data);
+      return data;
     } catch (error) {
       console.error('Error calling Lambda function:', error);
       throw error;

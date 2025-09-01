@@ -7,19 +7,15 @@ export const handler = async (event) => {
   console.log('Thumbnail generator triggered:', JSON.stringify(event, null, 2));
   
   try {
-    // Parse the event - could be from API Gateway or S3 trigger
-    let bucketName, objectKey;
+    // Parse GraphQL mutation event from Amplify
+    const { arguments: args } = event;
+    const objectKey = args.objectKey;
     
-    if (event.Records) {
-      // S3 trigger event
-      const record = event.Records[0];
-      bucketName = record.s3.bucket.name;
-      objectKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
-    } else {
-      // API Gateway event
-      const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-      bucketName = body.bucketName || process.env.STORAGE_BUCKET_NAME;
-      objectKey = body.objectKey;
+    // Get bucket name from environment - will be set by Amplify automatically
+    const bucketName = process.env.AMPLIFY_STORAGE_BUCKET_NAME;
+    
+    if (!bucketName) {
+      throw new Error('Storage bucket name not found in environment variables');
     }
     
     console.log(`Processing: ${bucketName}/${objectKey}`);
@@ -27,10 +23,7 @@ export const handler = async (event) => {
     // Skip if this is already a thumbnail
     if (objectKey.includes('_thumb.')) {
       console.log('Skipping thumbnail file');
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Skipped thumbnail file' })
-      };
+      return { message: 'Skipped thumbnail file' };
     }
     
     // Generate thumbnail key
@@ -63,18 +56,10 @@ export const handler = async (event) => {
       console.log(`Thumbnail generated successfully: ${thumbnailKey}`);
       
       return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({
-          message: 'Thumbnail generated successfully',
-          originalKey: objectKey,
-          thumbnailKey: thumbnailKey,
-          thumbnailSize: thumbnailBuffer.length
-        })
+        message: 'Thumbnail generated successfully',
+        originalKey: objectKey,
+        thumbnailKey: thumbnailKey,
+        thumbnailSize: thumbnailBuffer.length
       };
       
     } catch (error) {
@@ -83,36 +68,16 @@ export const handler = async (event) => {
       // Return success even if thumbnail generation fails
       // This prevents upload failures due to thumbnail issues
       return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({
-          message: 'Original upload successful, thumbnail generation failed',
-          error: error.message,
-          originalKey: objectKey
-        })
+        message: 'Original upload successful, thumbnail generation failed',
+        error: error.message,
+        originalKey: objectKey
       };
     }
     
   } catch (error) {
     console.error('Lambda execution error:', error);
     
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      },
-      body: JSON.stringify({
-        error: 'Internal server error',
-        message: error.message
-      })
-    };
-  }
+    throw new Error(`Lambda execution error: ${error.message}`);
 };
 
 // Helper function to convert stream to buffer
