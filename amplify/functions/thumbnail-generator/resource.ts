@@ -6,12 +6,13 @@ import { defineFunction } from '@aws-amplify/backend';
 
 export const thumbnailGenerator = defineFunction({
   name: 'thumbnail-generator',
-  entry: './handler.js',
-  runtime: 20,
+  entry: './handler.py',
+  // Note: Amplify Gen 2 uses CDK construct for Python runtime
+  // The Python runtime will be configured in backend.ts
   timeoutSeconds: 30,
   memoryMB: 512,
-  // Environment will include SHARP_LAYER_ARN for layer configuration
+  // Python runtime doesn't need bundling configuration
   environment: {
-    SHARP_IGNORE_GLOBAL_LIBVIPS: '1'  // Helps Sharp work in Lambda environment
+    // Python-specific environment variables can be added here if needed
   }
 });
