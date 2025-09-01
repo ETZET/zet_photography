@@ -29,3 +29,10 @@ backend.thumbnailGenerator.resources.lambda.addToRolePolicy(
 
 // Add bucket name as environment variable for the Lambda function
 backend.thumbnailGenerator.addEnvironment('AMPLIFY_STORAGE_BUCKET_NAME', backend.storage.resources.bucket.bucketName);
+
+// Configure Sharp Lambda layer using CDK escape hatch
+// This is necessary because Amplify doesn't directly expose layer configuration
+const cfnFunction = backend.thumbnailGenerator.resources.lambda.node.defaultChild as any;
+cfnFunction.addPropertyOverride('Layers', [
+  'arn:aws:lambda:us-east-1:770693421928:layer:Klayers-p39-sharp:1'
+]);

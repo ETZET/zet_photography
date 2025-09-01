@@ -1,5 +1,5 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import Jimp from 'jimp';
+import sharp from 'sharp';
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
@@ -39,8 +39,8 @@ export const handler = async (event) => {
       const originalImage = await s3Client.send(new GetObjectCommand(getObjectParams));
       const imageBuffer = await streamToBuffer(originalImage.Body);
       
-      // Generate thumbnail using Jimp
-      const thumbnailBuffer = await generateThumbnailWithJimp(imageBuffer, 300, 80);
+      // Generate thumbnail using Sharp
+      const thumbnailBuffer = await generateThumbnailWithSharp(imageBuffer, 300, 80);
       
       // Upload thumbnail to S3
       const putObjectParams = {
@@ -89,22 +89,24 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
-// Helper function to generate thumbnail using Jimp
-async function generateThumbnailWithJimp(imageBuffer, maxSize, quality) {
+// Helper function to generate thumbnail using Sharp (from Lambda layer)
+async function generateThumbnailWithSharp(imageBuffer, maxSize, quality) {
   try {
-    // Load the image using Jimp
-    const image = await Jimp.read(imageBuffer);
-    
-    // Resize with aspect ratio preservation
-    // Jimp.AUTO maintains aspect ratio for the other dimension
-    image.resize(maxSize, maxSize, Jimp.RESIZE_BEZIER);
-    
-    // Convert to JPEG with quality (0-100)
-    const thumbnailBuffer = await image.quality(quality).getBufferAsync(Jimp.MIME_JPEG);
+    // Generate thumbnail with Sharp
+    const thumbnailBuffer = await sharp(imageBuffer)
+      .resize(maxSize, maxSize, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({
+        quality: quality,
+        progressive: true
+      })
+      .toBuffer();
     
     return thumbnailBuffer;
   } catch (error) {
-    console.error('Error generating thumbnail with Jimp:', error);
+    console.error('Error generating thumbnail with Sharp:', error);
     throw error;
   }
 }
