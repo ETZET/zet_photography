@@ -32,7 +32,7 @@ export class ThumbnailService {
   // Generate thumbnail via Lambda function
   static async generateThumbnailViaLambda(s3ObjectKey) {
     try {
-      // Get authenticated session for credentials
+      // Get session credentials (works for both authenticated and unauthenticated users)
       const session = await fetchAuthSession();
       const credentials = session.credentials;
 
