@@ -35,7 +35,11 @@ def generate_thumbnail_key(original_key):
     return f"{original_key}_thumb"
 
 def lambda_handler(event, context):
-    print(f'Thumbnail generator triggered: {json.dumps(event)}')
+    """
+    AWS Lambda handler for generating thumbnails from uploaded images.
+    Following Amplify Gen 2 Python Lambda best practices.
+    """
+    print(f'Event: {json.dumps(event, default=str)}')
     
     try:
         # Parse GraphQL mutation event from Amplify

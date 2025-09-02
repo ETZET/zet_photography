@@ -1,18 +1,29 @@
-import { defineFunction } from '@aws-amplify/backend';
+import { CfnOutput, Duration } from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 
-// Using a community Sharp layer for production deployment
-// Layer ARN for us-east-1: arn:aws:lambda:us-east-1:770693421928:layer:Klayers-p39-sharp:1
-// Adjust for your AWS region if different
+export class ThumbnailGeneratorStack {
+  public readonly function: lambda.Function;
 
-export const thumbnailGenerator = defineFunction({
-  name: 'thumbnail-generator',
-  entry: './handler.py',
-  // Note: Amplify Gen 2 uses CDK construct for Python runtime
-  // The Python runtime will be configured in backend.ts
-  timeoutSeconds: 30,
-  memoryMB: 512,
-  // Python runtime doesn't need bundling configuration
-  environment: {
-    // Python-specific environment variables can be added here if needed
+  constructor(scope: Construct, _id: string) {
+    // Define the Lambda function
+    this.function = new lambda.Function(scope, 'ThumbnailGeneratorFunction', {
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'handler.lambda_handler',
+      code: lambda.Code.fromAsset('./amplify/functions/thumbnail-generator'),
+      functionName: 'ThumbnailGeneratorFunction',
+      description: 'Generates thumbnails for uploaded images',
+      timeout: Duration.seconds(30),
+      memorySize: 512,
+      environment: {
+        // Environment variables will be added in backend.ts
+      },
+    });
+
+    // Output the Lambda function ARN
+    new CfnOutput(scope, 'ThumbnailGeneratorFunctionArn', {
+      value: this.function.functionArn,
+      exportName: 'ThumbnailGeneratorFunctionArn',
+    });
   }
-});
+}

@@ -1,5 +1,4 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
-import { thumbnailGenerator } from '../functions/thumbnail-generator/resource';
 
 /*== STEP 1 ===============================================================
 The section below creates a Todo database table with a "content" field. Try
@@ -14,15 +13,9 @@ const schema = a.schema({
     })
     .authorization((allow) => [allow.guest()]),
 
-  // Add REST API for thumbnail generation
-  generateThumbnail: a
-    .mutation()
-    .arguments({
-      objectKey: a.string().required()
-    })
-    .returns(a.json())
-    .handler(a.handler.function(thumbnailGenerator))
-    .authorization((allow) => [allow.authenticated()]),
+  // Note: Thumbnail generation is now handled via CDK Lambda stack
+  // The function will be triggered through S3 events or direct invocation
+  // rather than through GraphQL mutations
 });
 
 export type Schema = ClientSchema<typeof schema>;
