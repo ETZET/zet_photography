@@ -10,15 +10,15 @@ export class ThumbnailGeneratorStack {
     this.function = new lambda.Function(scope, 'ThumbnailGeneratorFunction', {
       runtime: lambda.Runtime.PYTHON_3_11,
       handler: 'handler.lambda_handler',
-      code: lambda.Code.fromAsset('./amplify/functions/thumbnail-generator', {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
-          command: [
-            'bash', '-c',
-            'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output'
-          ],
-        },
-      }),
+      code: lambda.Code.fromAsset('./amplify/functions/thumbnail-generator'),
+      layers: [
+        // Use AWS-provided Pillow layer for PIL functionality
+        lambda.LayerVersion.fromLayerVersionArn(
+          scope,
+          'PillowLayer',
+          'arn:aws:lambda:us-east-2:770693421928:layer:Klayers-p311-Pillow:6'
+        )
+      ],
       functionName: 'ThumbnailGeneratorFunction',
       description: 'Generates thumbnails for uploaded images',
       timeout: Duration.seconds(30),
