@@ -34,11 +34,3 @@ thumbnailStack.function.addToRolePolicy(
 
 // Add bucket name as environment variable for the Lambda function
 thumbnailStack.function.addEnvironment('AMPLIFY_STORAGE_BUCKET_NAME', backend.storage.resources.bucket.bucketName);
-
-// Add function to backend outputs so it appears in amplify_outputs.json
-backend.addOutput({
-  custom: {
-    thumbnailGeneratorFunctionName: thumbnailStack.function.functionName,
-    thumbnailGeneratorFunctionArn: thumbnailStack.function.functionArn,
-  }
-});
