@@ -1,5 +1,7 @@
 import { uploadData, getUrl } from 'aws-amplify/storage';
-import { generateClient } from 'aws-amplify/data';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { fetchAuthSession } from 'aws-amplify/auth';
+import outputs from '../../amplify_outputs.json';
 
 export class ThumbnailService {
   
@@ -30,18 +32,42 @@ export class ThumbnailService {
   // Generate thumbnail via Lambda function
   static async generateThumbnailViaLambda(s3ObjectKey) {
     try {
-      const client = generateClient();
-      const { data, errors } = await client.mutations.generateThumbnail({
-        objectKey: s3ObjectKey
+      // Get authenticated session for credentials
+      const session = await fetchAuthSession();
+      const credentials = session.credentials;
+
+      // Create Lambda client
+      const lambdaClient = new LambdaClient({
+        region: outputs.storage.aws_region,
+        credentials: credentials
       });
 
-      if (errors) {
-        console.error('GraphQL errors:', errors);
-        throw new Error(`GraphQL errors: ${errors.map(e => e.message).join(', ')}`);
+      // Get function name from outputs, fallback to hardcoded name
+      const functionName = outputs.custom?.thumbnailGeneratorFunctionName || 'ThumbnailGeneratorFunction';
+
+      // Prepare the payload
+      const payload = {
+        arguments: {
+          objectKey: s3ObjectKey
+        }
+      };
+
+      // Invoke Lambda function
+      const command = new InvokeCommand({
+        FunctionName: functionName,
+        Payload: JSON.stringify(payload),
+      });
+
+      const response = await lambdaClient.send(command);
+      const result = JSON.parse(new TextDecoder().decode(response.Payload));
+
+      console.log('Lambda thumbnail generation result:', result);
+
+      if (result.errorMessage) {
+        throw new Error(`Lambda error: ${result.errorMessage}`);
       }
 
-      console.log('Lambda thumbnail generation result:', data);
-      return data;
+      return result;
     } catch (error) {
       console.error('Error calling Lambda function:', error);
       throw error;
