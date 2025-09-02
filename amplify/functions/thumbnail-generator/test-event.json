@@ -1,0 +1,23 @@
+{
+  "arguments": {
+    "objectKey": "images/flowerdecay/flower1.jpg"
+  },
+  "info": {
+    "fieldName": "generateThumbnail",
+    "parentTypeName": "Mutation",
+    "variables": {
+      "objectKey": "images/flowerdecay/flower1.jpg"
+    }
+  },
+  "requestHeaders": {
+    "x-amzn-RequestId": "12345678-1234-1234-1234-123456789abc",
+    "Content-Type": "application/json",
+    "Authorization": "AWS4-HMAC-SHA256 Credential=..."
+  },
+  "source": null,
+  "prev": null,
+  "stash": {},
+  "variables": {
+    "objectKey": "images/flowerdecay/flower1.jpg"
+  }
+}
