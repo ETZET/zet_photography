@@ -13,4 +13,8 @@ export const auth = defineAuth({
       required: true,
     },
   },
+  access: (allow) => [
+    // Allow unauthenticated users to invoke Lambda functions
+    allow.unauthenticated().to(['lambda:InvokeFunction']),
+  ],
 });
