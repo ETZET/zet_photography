@@ -1,6 +1,7 @@
 import { CfnOutput, Duration } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { PolicyStatement, Effect, AnyPrincipal } from 'aws-cdk-lib/aws-iam';
 
 export class ThumbnailGeneratorStack {
   public readonly function: lambda.Function;
@@ -26,6 +27,13 @@ export class ThumbnailGeneratorStack {
       environment: {
         // Environment variables will be added in backend.ts
       },
+    });
+
+    // Add resource policy to allow Lambda invocation from any principal
+    // This allows both authenticated and unauthenticated users to invoke the function
+    this.function.addPermission('AllowPublicInvoke', {
+      principal: new AnyPrincipal(),
+      action: 'lambda:InvokeFunction',
     });
 
     // Output the Lambda function ARN
