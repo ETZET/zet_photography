@@ -20,8 +20,10 @@ const AppContent = () => {
     try {
       setLoading(true);
       const series = await initializePhotoSeries();
-      setPhotoSeries(series);
-      console.log('Loaded photo series:', series.map(s => ({ title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0 })));
+      // Filter out hidden series for the main gallery
+      const visibleSeries = series.filter(s => !s.isHidden);
+      setPhotoSeries(visibleSeries);
+      console.log('Loaded photo series:', visibleSeries.map(s => ({ title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0, isHidden: s.isHidden })));
     } catch (error) {
       console.error('Error loading photo series:', error);
     } finally {

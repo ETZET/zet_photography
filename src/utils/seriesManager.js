@@ -19,6 +19,7 @@ const initialSeriesConfig = [
       "flower30.jpg", "flower31.jpg", "flower32.jpg", "flower33.jpg", "flower34.jpg",
       "flower35.jpg", "flower36.jpg", "flower37.jpg", "flower38.jpg"
     ],
+    isHidden: false,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z"
   },
@@ -35,6 +36,7 @@ const initialSeriesConfig = [
       "img20230423_13062462.jpg", "img20230423_13072873.jpg", "img20230423_13081452.jpg",
       "img20230423_13100272.jpg"
     ],
+    isHidden: false,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z"
   },
@@ -47,6 +49,7 @@ const initialSeriesConfig = [
       "car.jpg", "cat.jpg", "curb.jpg", "house.jpg", "road.jpg",
       "sand.jpg", "shell.jpg", "sky.jpg", "tree.jpg", "window.jpg"
     ],
+    isHidden: false,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z"
   }
@@ -169,6 +172,7 @@ export class SeriesManager {
         description: description || '',
         s3Prefix,
         images: [],
+        isHidden: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
