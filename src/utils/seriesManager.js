@@ -1,4 +1,4 @@
-import { uploadData, downloadData, list } from 'aws-amplify/storage';
+import { uploadData, downloadData } from 'aws-amplify/storage';
 
 const SERIES_CONFIG_KEY = 'config/series-config.json';
 
@@ -58,13 +58,24 @@ const initialSeriesConfig = [
 export class SeriesManager {
   
   // Load series configuration from S3
-  static async loadSeriesConfig() {
+  static async loadSeriesConfig(forceRefresh = false) {
     try {
-      console.log('Loading series config from S3...');
-      const result = await downloadData({ key: SERIES_CONFIG_KEY }).result;
+      console.log(`Loading series config from S3... (force refresh: ${forceRefresh})`);
+      
+      const result = await downloadData({ 
+        key: SERIES_CONFIG_KEY,
+        options: {
+          // Add cache control headers to bypass caching when forcing refresh
+          ...(forceRefresh && {
+            cacheControl: 'no-cache, no-store, must-revalidate',
+            expires: new Date(0)
+          })
+        }
+      }).result;
+      
       const configText = await result.body.text();
       const config = JSON.parse(configText);
-      console.log('Loaded config from S3:', config.map(s => ({ id: s.id, title: s.title, imageCount: s.images.length })));
+      console.log('Loaded config from S3:', config.map(s => ({ id: s.id, title: s.title, imageCount: s.images.length, isHidden: s.isHidden })));
       
       // Transform to the format expected by your app
       const transformedConfig = config.map(series => ({
@@ -76,13 +87,13 @@ export class SeriesManager {
         }))
       }));
       
-      console.log('Transformed config:', transformedConfig.map(s => ({ id: s.id, title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0 })));
+      console.log('Transformed config:', transformedConfig.map(s => ({ id: s.id, title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0, isHidden: s.isHidden })));
       return transformedConfig;
     } catch (error) {
       console.log('Series config not found, creating initial config...');
       // If config doesn't exist, create it with initial data
       await this.saveSeriesConfig(initialSeriesConfig);
-      return this.loadSeriesConfig();
+      return this.loadSeriesConfig(forceRefresh);
     }
   }
 
@@ -191,7 +202,8 @@ export class SeriesManager {
   // Update series metadata
   static async updateSeries(seriesId, updates) {
     try {
-      const config = await this.getRawSeriesConfig();
+      // Force refresh to get latest data before updating
+      const config = await this.getRawSeriesConfig(true);
       const seriesIndex = config.findIndex(series => series.id === seriesId);
       
       if (seriesIndex === -1) {
@@ -205,7 +217,7 @@ export class SeriesManager {
       };
       
       await this.saveSeriesConfig(config);
-      console.log(`Updated series: "${config[seriesIndex].title}"`);
+      console.log(`Updated series: "${config[seriesIndex].title}"`, updates);
       
       return config[seriesIndex];
     } catch (error) {
@@ -237,10 +249,59 @@ export class SeriesManager {
     }
   }
 
-  // Get raw config (without photo transformations)
-  static async getRawSeriesConfig() {
+  // Reorder images in a series
+  static async reorderImages(seriesId, orderedImageNames) {
     try {
-      const result = await downloadData({ key: SERIES_CONFIG_KEY }).result;
+      console.log(`Reordering images for series ${seriesId}...`);
+      // Force refresh to get latest data before reordering
+      const config = await this.getRawSeriesConfig(true);
+      const seriesIndex = config.findIndex(series => series.id === seriesId);
+      
+      if (seriesIndex === -1) {
+        throw new Error(`Series with ID ${seriesId} not found`);
+      }
+
+      // Validate that all images are present
+      const currentImages = config[seriesIndex].images;
+      if (orderedImageNames.length !== currentImages.length) {
+        throw new Error(`Image count mismatch during reordering. Expected: ${currentImages.length}, Got: ${orderedImageNames.length}`);
+      }
+
+      // Validate that all images exist in the series
+      const currentImageSet = new Set(currentImages);
+      for (const imageName of orderedImageNames) {
+        if (!currentImageSet.has(imageName)) {
+          throw new Error(`Image ${imageName} not found in series`);
+        }
+      }
+
+      // Update the image order
+      config[seriesIndex].images = orderedImageNames;
+      config[seriesIndex].updatedAt = new Date().toISOString();
+      
+      await this.saveSeriesConfig(config);
+      console.log(`Successfully reordered images in series "${config[seriesIndex].title}". New order:`, orderedImageNames.slice(0, 3).join(', '), '...');
+      
+      return config[seriesIndex];
+    } catch (error) {
+      console.error('Error reordering images:', error);
+      throw error;
+    }
+  }
+
+  // Get raw config (without photo transformations)
+  static async getRawSeriesConfig(forceRefresh = false) {
+    try {
+      const result = await downloadData({ 
+        key: SERIES_CONFIG_KEY,
+        options: {
+          // Add cache control headers to bypass caching when forcing refresh
+          ...(forceRefresh && {
+            cacheControl: 'no-cache, no-store, must-revalidate',
+            expires: new Date(0)
+          })
+        }
+      }).result;
       const configText = await result.body.text();
       return JSON.parse(configText);
     } catch (error) {

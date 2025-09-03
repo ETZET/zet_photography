@@ -68,7 +68,7 @@ def lambda_handler(event, context):
             image_data = response['Body'].read()
             
             # Generate thumbnail using PIL
-            thumbnail_data = resize_image(image_data, max_size=300, quality=80)
+            thumbnail_data = resize_image(image_data, max_size=600, quality=95)
             
             # Upload thumbnail to S3
             s3_client.put_object(

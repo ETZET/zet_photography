@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Upload, Plus, Trash2, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { Upload, Plus, Trash2, RefreshCw, Eye, EyeOff, Move, X, Save, Check, AlertCircle } from 'lucide-react';
 import { initializePhotoSeries, SeriesManager } from '../data/photoSeries';
 import { ThumbnailService } from '../utils/thumbnailService';
 import LazyImage from './LazyImage';
@@ -18,16 +18,44 @@ const GalleryManagement = () => {
     s3Prefix: ''
   });
   const [deletingSeries, setDeletingSeries] = useState(null);
+  const [showReorderDialog, setShowReorderDialog] = useState(false);
+  const [reorderingImages, setReorderingImages] = useState([]);
+  const [draggedItem, setDraggedItem] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     loadPhotoSeries();
   }, []);
 
+  // Auto-hide notification after 3 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+  };
+
   const loadPhotoSeries = async () => {
     try {
+      // Remember currently selected series
+      const currentSelectedId = selectedSeries?.id;
+      
       const series = await initializePhotoSeries();
       setPhotoSeries(series);
-      if (series.length > 0) {
+      
+      // Restore selection or default to first
+      if (currentSelectedId) {
+        const previouslySelected = series.find(s => s.id === currentSelectedId);
+        setSelectedSeries(previouslySelected || series[0]);
+      } else if (series.length > 0) {
         setSelectedSeries(series[0]);
       }
     } catch (error) {
@@ -83,7 +111,7 @@ const GalleryManagement = () => {
     
     if (successful.length > 0) {
       console.log('Upload successful, refreshing data...');
-      alert(`Successfully uploaded ${successful.length} image(s) to "${selectedSeries.title}"`);
+      showNotification(`Successfully uploaded ${successful.length} image(s) to "${selectedSeries.title}"`);
       
       // Refresh the management gallery data
       await loadPhotoSeries();
@@ -93,7 +121,7 @@ const GalleryManagement = () => {
     }
     
     if (failed.length > 0) {
-      alert(`Failed to upload ${failed.length} image(s). Check console for details.`);
+      showNotification(`Failed to upload ${failed.length} image(s)`, 'error');
     }
 
     setIsUploading(false);
@@ -109,7 +137,7 @@ const GalleryManagement = () => {
 
   const handleAddSeries = async () => {
     if (!seriesFormData.title || !seriesFormData.s3Prefix) {
-      alert('Please provide a title and S3 prefix for the series');
+      showNotification('Please provide a title and S3 prefix for the series', 'error');
       return;
     }
 
@@ -128,10 +156,10 @@ const GalleryManagement = () => {
       // Trigger refresh of main gallery to show new series
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
       
-      alert(`Series "${newSeries.title}" created successfully`);
+      showNotification(`Series "${newSeries.title}" created successfully`);
     } catch (error) {
       console.error('Error adding series:', error);
-      alert('Failed to create series. Please try again.');
+      showNotification('Failed to create series', 'error');
     }
   };
 
@@ -147,29 +175,152 @@ const GalleryManagement = () => {
       // Trigger refresh of main gallery to reflect deletion
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
       
-      alert(`Series "${deletingSeries.title}" has been deleted`);
+      showNotification(`Series "${deletingSeries.title}" has been deleted`);
     } catch (error) {
       console.error('Error deleting series:', error);
-      alert('Failed to delete series. Please try again.');
+      showNotification('Failed to delete series', 'error');
     }
   };
 
   const toggleSeriesVisibility = async (series) => {
     try {
-      const updatedSeries = await SeriesManager.updateSeries(series.id, {
-        isHidden: !series.isHidden
-      });
+      const newIsHidden = !series.isHidden;
       
-      await loadPhotoSeries();
+      // Update local state immediately
+      const updatedLocalSeries = { ...series, isHidden: newIsHidden };
+      
+      // Update in photoSeries array
+      setPhotoSeries(prevSeries => 
+        prevSeries.map(s => s.id === series.id ? updatedLocalSeries : s)
+      );
+      
+      // Update selectedSeries if it's the one being toggled
+      if (selectedSeries?.id === series.id) {
+        setSelectedSeries(updatedLocalSeries);
+      }
+      
+      // Save to S3 in background
+      await SeriesManager.updateSeries(series.id, {
+        isHidden: newIsHidden
+      });
       
       // Trigger refresh of main gallery to reflect visibility change
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
       
-      alert(`Series "${series.title}" is now ${updatedSeries.isHidden ? 'hidden' : 'visible'}`);
+      showNotification(`${series.title} is now ${newIsHidden ? 'hidden' : 'visible'}`);
     } catch (error) {
       console.error('Error updating series visibility:', error);
-      alert('Failed to update series visibility. Please try again.');
+      showNotification('Failed to update series visibility', 'error');
+      // Reload on error to restore correct state
+      await loadPhotoSeries();
     }
+  };
+
+  const openReorderDialog = (series) => {
+    console.log('Opening reorder dialog for series:', series.title);
+    console.log('Current image order:', series.images);
+    setReorderingImages([...series.images]);
+    setShowReorderDialog(true);
+  };
+
+  const handleDragStart = (e, index) => {
+    setDraggedItem(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    if (draggedItem === null || draggedItem === dropIndex) return;
+
+    const newImages = [...reorderingImages];
+    const draggedImage = newImages[draggedItem];
+    
+    // Remove the dragged item from its original position
+    newImages.splice(draggedItem, 1);
+    
+    // If we're moving the item forward and removed an item before the drop position,
+    // we need to adjust the index
+    let adjustedIndex = dropIndex;
+    if (draggedItem < dropIndex) {
+      adjustedIndex = dropIndex - 1;
+    }
+    
+    // Insert at the new position
+    newImages.splice(adjustedIndex, 0, draggedImage);
+    
+    setReorderingImages(newImages);
+    setDraggedItem(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDragOverIndex(null);
+  };
+
+  const saveImageOrder = async () => {
+    if (!selectedSeries) return;
+    
+    setIsSavingOrder(true);
+    try {
+      console.log('Saving new image order:', reorderingImages);
+      
+      // Update the local state immediately for instant feedback
+      const updatedLocalSeries = {
+        ...selectedSeries,
+        images: [...reorderingImages],
+        // Also update photos array to reflect new order
+        photos: reorderingImages.map((filename, index) => ({
+          id: index + 1,
+          src: `public/${selectedSeries.s3Prefix}/${filename}`,
+          title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+        }))
+      };
+      
+      // Update the selected series immediately
+      setSelectedSeries(updatedLocalSeries);
+      
+      // Update in the photoSeries array as well
+      setPhotoSeries(prevSeries => 
+        prevSeries.map(s => s.id === selectedSeries.id ? updatedLocalSeries : s)
+      );
+      
+      // Close dialog immediately for better UX
+      setShowReorderDialog(false);
+      
+      // Save to S3 in the background
+      await SeriesManager.reorderImages(selectedSeries.id, reorderingImages);
+      
+      // Trigger refresh of main gallery
+      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
+      
+      console.log('Image order saved successfully');
+      showNotification('Image order saved successfully');
+    } catch (error) {
+      console.error('Error saving image order:', error);
+      showNotification('Failed to save image order', 'error');
+      // Reload to restore correct state on error
+      await loadPhotoSeries();
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
+  const cancelReorder = () => {
+    setShowReorderDialog(false);
+    setReorderingImages([]);
+    setDraggedItem(null);
+    setDragOverIndex(null);
   };
 
   if (loading) {
@@ -182,6 +333,29 @@ const GalleryManagement = () => {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Toast Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 animate-slide-in`}>
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm ${
+            notification.type === 'error' 
+              ? 'bg-red-50 border border-red-200 text-red-800' 
+              : 'bg-green-50 border border-green-200 text-green-800'
+          }`}>
+            {notification.type === 'error' ? (
+              <AlertCircle size={20} className="flex-shrink-0" />
+            ) : (
+              <Check size={20} className="flex-shrink-0" />
+            )}
+            <p className="text-sm font-medium">{notification.message}</p>
+            <button
+              onClick={() => setNotification(null)}
+              className="ml-4 text-gray-400 hover:text-gray-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-8">
@@ -327,9 +501,20 @@ const GalleryManagement = () => {
 
                 {/* Current Images Preview */}
                 <div>
-                  <h3 className="text-lg font-light mb-4">
-                    Current Images ({selectedSeries.images?.length || 0})
-                  </h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-light">
+                      Current Images ({selectedSeries.images?.length || 0})
+                    </h3>
+                    {selectedSeries.images && selectedSeries.images.length > 0 && (
+                      <button
+                        onClick={() => openReorderDialog(selectedSeries)}
+                        className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 hover:bg-gray-50 transition-colors text-sm"
+                      >
+                        <Move size={16} />
+                        Reorder Images
+                      </button>
+                    )}
+                  </div>
                   
                   {selectedSeries.images && selectedSeries.images.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -431,6 +616,110 @@ const GalleryManagement = () => {
                 className="px-4 py-2 bg-gray-900 text-white hover:bg-gray-800 transition-colors"
               >
                 Create Series
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reorder Images Dialog */}
+      {showReorderDialog && selectedSeries && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white max-w-6xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-light">Reorder Images - {selectedSeries.title}</h2>
+                <button
+                  onClick={cancelReorder}
+                  className="p-2 hover:bg-gray-100 transition-colors rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mt-2">
+                Drag and drop images to reorder them. Changes will be saved when you click "Save Order".
+              </p>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {reorderingImages.map((imageName, index) => {
+                  const imagePath = `public/${selectedSeries.s3Prefix}/${imageName}`;
+                  const isDragging = draggedItem === index;
+                  const isDragOver = dragOverIndex === index;
+                  const showDropIndicator = isDragOver && draggedItem !== null && draggedItem !== index;
+                  
+                  return (
+                    <div key={`${imageName}-${index}`} className="relative">
+                      {/* Drop indicator line */}
+                      {showDropIndicator && draggedItem > index && (
+                        <div className="absolute left-0 top-0 w-1 h-full bg-blue-500 z-20 -translate-x-2 animate-pulse" />
+                      )}
+                      
+                      <div
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, index)}
+                        onDragEnd={handleDragEnd}
+                        className={`
+                          relative aspect-square bg-gray-100 border-2 overflow-hidden cursor-move
+                          transition-all duration-200
+                          ${isDragging ? 'opacity-30 scale-95' : ''}
+                          ${showDropIndicator ? 'border-blue-500 shadow-lg' : 'border-gray-200'}
+                          hover:border-gray-400
+                        `}
+                      >
+                        <div className="absolute top-1 left-1 bg-black bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded z-10 font-medium">
+                          {index + 1}
+                        </div>
+                        <LazyImage
+                          src={imagePath}
+                          alt={imageName}
+                          useThumbnail={true}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity">
+                          <p className="absolute bottom-1 left-1 right-1 text-xs text-white truncate px-1">
+                            {imageName}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Drop indicator line */}
+                      {showDropIndicator && draggedItem < index && (
+                        <div className="absolute right-0 top-0 w-1 h-full bg-blue-500 z-20 translate-x-2 animate-pulse" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={cancelReorder}
+                className="px-4 py-2 border border-gray-300 hover:bg-gray-50 transition-colors"
+                disabled={isSavingOrder}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveImageOrder}
+                className="px-4 py-2 bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                disabled={isSavingOrder}
+              >
+                {isSavingOrder ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Save Order
+                  </>
+                )}
               </button>
             </div>
           </div>

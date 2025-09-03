@@ -16,10 +16,10 @@ const AppContent = () => {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('work'); // 'work', 'about', 'login', or 'manage'
 
-  const loadPhotoSeriesData = async () => {
+  const loadPhotoSeriesData = async (forceRefresh = false) => {
     try {
       setLoading(true);
-      const series = await initializePhotoSeries();
+      const series = await initializePhotoSeries(forceRefresh);
       // Filter out hidden series for the main gallery
       const visibleSeries = series.filter(s => !s.isHidden);
       setPhotoSeries(visibleSeries);
@@ -37,9 +37,10 @@ const AppContent = () => {
 
   // Function to refresh data (can be called from management page)
   useEffect(() => {
-    const handleRefresh = () => {
-      console.log('Refreshing photo series data...');
-      loadPhotoSeriesData();
+    const handleRefresh = (event) => {
+      console.log('Refreshing photo series data with force refresh...');
+      // Always force refresh when triggered by management changes to bypass cache
+      loadPhotoSeriesData(true);
     };
 
     // Listen for custom refresh events
