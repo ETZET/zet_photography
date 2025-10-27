@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Instagram, Mail, LogOut, Settings } from 'lucide-react';
 import ScrollableGallery from './components/ScrollableGallery';
 import PhotoViewer from './components/PhotoViewer';
@@ -16,37 +16,53 @@ const AppContent = () => {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('work'); // 'work', 'about', 'login', or 'manage'
 
-  const loadPhotoSeriesData = async (forceRefresh = false) => {
+  const loadPhotoSeriesData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
+      console.log(`[APP] ========== Loading photo series data (forceRefresh: ${forceRefresh}) ==========`);
       const series = await initializePhotoSeries(forceRefresh);
+      console.log(`[APP] Raw series data received:`, series.map(s => ({
+        id: s.id,
+        title: s.title,
+        isHidden: s.isHidden,
+        imageCount: s.images?.length || 0,
+        photoCount: s.photos?.length || 0
+      })));
+
       // Filter out hidden series for the main gallery
       const visibleSeries = series.filter(s => !s.isHidden);
+      console.log(`[APP] After visibility filter - Total: ${series.length}, Visible: ${visibleSeries.length}, Hidden: ${series.length - visibleSeries.length}`);
+      console.log(`[APP] Visible series:`, visibleSeries.map(s => ({ id: s.id, title: s.title, isHidden: s.isHidden })));
+      console.log(`[APP] Hidden series:`, series.filter(s => s.isHidden).map(s => ({ id: s.id, title: s.title, isHidden: s.isHidden })));
+
       setPhotoSeries(visibleSeries);
-      console.log('Loaded photo series:', visibleSeries.map(s => ({ title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0, isHidden: s.isHidden })));
+      console.log(`[APP] Photo series state updated with ${visibleSeries.length} visible series`);
     } catch (error) {
-      console.error('Error loading photo series:', error);
+      console.error('[APP] Error loading photo series:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPhotoSeriesData();
-  }, []);
+  }, [loadPhotoSeriesData]);
 
   // Function to refresh data (can be called from management page)
   useEffect(() => {
     const handleRefresh = (event) => {
       console.log('Refreshing photo series data with force refresh...');
       // Always force refresh when triggered by management changes to bypass cache
-      loadPhotoSeriesData(true);
+      // Add a small delay to ensure S3 write has propagated
+      setTimeout(() => {
+        loadPhotoSeriesData(true);
+      }, 100);
     };
 
     // Listen for custom refresh events
     window.addEventListener('refreshPhotoSeries', handleRefresh);
     return () => window.removeEventListener('refreshPhotoSeries', handleRefresh);
-  }, []);
+  }, [loadPhotoSeriesData]);
   
   const handlePhotoClick = (photo, seriesPhotos) => {
     setSelectedPhoto(photo);

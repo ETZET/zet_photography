@@ -8,7 +8,21 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
   const [imageUrl, setImageUrl] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [cacheVersion, setCacheVersion] = useState(0);
   const imageRef = useRef(null);
+
+  // Listen for global refresh events to invalidate cached URLs
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('LazyImage: Invalidating cached image URL for', src);
+      setImageUrl(null); // Clear cached URL
+      setIsLoaded(false);
+      setCacheVersion(v => v + 1); // Force re-fetch
+    };
+
+    window.addEventListener('refreshPhotoSeries', handleRefresh);
+    return () => window.removeEventListener('refreshPhotoSeries', handleRefresh);
+  }, [src]);
 
   // Fetch the image URL when the component mounts or src changes
   useEffect(() => {
@@ -20,24 +34,25 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
 
       try {
         let pathToLoad = src;
-        
+
         // If thumbnail is requested, try thumbnail first
         if (useThumbnail) {
           const thumbnailPath = ThumbnailService.getThumbnailPath(src);
-          
+
           try {
             // Check if thumbnail exists
+            // CRITICAL: Short expiry + useAccelerateEndpoint: false to reduce browser caching
             const thumbnailResult = await getUrl({
               path: thumbnailPath,
               options: {
                 validateObjectExistence: true,
-                expiresIn: 3600
+                expiresIn: 300, // 5 minutes instead of 1 hour
+                useAccelerateEndpoint: false
               }
             });
             
             pathToLoad = thumbnailPath;
             setImageUrl(thumbnailResult.url.toString());
-            console.log('Thumbnail URL fetched successfully:', thumbnailResult.url.toString());
             
           } catch (thumbnailError) {
             console.log('Thumbnail not found, generating from original:', thumbnailPath);
@@ -51,13 +66,13 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
                 path: thumbnailPath,
                 options: {
                   validateObjectExistence: true,
-                  expiresIn: 3600
+                  expiresIn: 300, // 5 minutes
+                  useAccelerateEndpoint: false
                 }
               });
               
               pathToLoad = thumbnailPath;
               setImageUrl(newThumbnailResult.url.toString());
-              console.log('Generated thumbnail URL fetched successfully:', newThumbnailResult.url.toString());
               
             } catch (generationError) {
               console.log('Failed to generate thumbnail, falling back to original:', generationError);
@@ -73,12 +88,12 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
             path: pathToLoad,
             options: {
               validateObjectExistence: true,
-              expiresIn: 3600
+              expiresIn: 300, // 5 minutes to reduce browser caching
+              useAccelerateEndpoint: false
             }
           });
           
           setImageUrl(result.url.toString());
-          console.log('Image URL fetched successfully:', result.url.toString());
         }
         
       } catch (err) {
@@ -90,7 +105,7 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
     };
 
     fetchImageUrl();
-  }, [src, useThumbnail]);
+  }, [src, useThumbnail, cacheVersion]); // Re-fetch when cacheVersion changes
 
   // Intersection Observer for lazy loading
   useEffect(() => {
@@ -155,9 +170,11 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
           }`}
           onLoad={() => {
             setIsLoaded(true);
-            console.log('Image loaded successfully');
           }}
           onError={handleImageError}
+          crossOrigin="anonymous"
+          // Force browser to revalidate instead of using stale cache
+          key={`${src}-${cacheVersion}`}
         />
       )}
     </div>

@@ -13,6 +13,24 @@ const schema = a.schema({
     })
     .authorization((allow) => [allow.guest()]),
 
+  // Photo Series model - replaces S3 JSON configuration
+  // Stores gallery series metadata with strong consistency
+  Series: a
+    .model({
+      title: a.string().required(),
+      description: a.string(),
+      s3Prefix: a.string().required(), // e.g., "images/flowerdecay"
+      images: a.string().array().required(), // Array of image filenames
+      isHidden: a.boolean().required().default(false),
+      order: a.integer().default(0), // For manual sorting
+    })
+    .authorization((allow) => [
+      // Anyone can read series (for public gallery)
+      allow.guest().to(['read']),
+      // Only authenticated users can create/update/delete
+      allow.authenticated().to(['create', 'update', 'delete', 'read'])
+    ]),
+
   // Note: Thumbnail generation is now handled via CDK Lambda stack
   // The function will be triggered through S3 events or direct invocation
   // rather than through GraphQL mutations

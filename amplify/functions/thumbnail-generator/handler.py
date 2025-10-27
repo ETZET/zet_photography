@@ -10,21 +10,33 @@ s3_client = boto3.client('s3')
 
 def resize_image(image_data, max_size=300, quality=80):
     """Resize image maintaining aspect ratio"""
+    print(f'[RESIZE] Starting resize_image - max_size={max_size}, quality={quality}')
+    print(f'[RESIZE] Input image data size: {len(image_data)} bytes')
+
     with Image.open(io.BytesIO(image_data)) as image:
+        print(f'[RESIZE] Original image loaded - size={image.size}, mode={image.mode}, format={image.format}')
+
         # Calculate thumbnail size maintaining aspect ratio
+        original_size = image.size
         image.thumbnail((max_size, max_size), Image.LANCZOS)
-        
+        print(f'[RESIZE] Thumbnail created - original size={original_size}, new size={image.size}')
+
         # Save to bytes buffer as JPEG
         output_buffer = io.BytesIO()
         # Convert to RGB if image has transparency (RGBA)
         if image.mode in ('RGBA', 'LA'):
+            print(f'[RESIZE] Converting from {image.mode} to RGB')
             background = Image.new('RGB', image.size, (255, 255, 255))
             background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
             image = background
-        
+            print(f'[RESIZE] Conversion complete - new mode={image.mode}')
+
+        print(f'[RESIZE] Saving as JPEG - quality={quality}')
         image.save(output_buffer, format='JPEG', quality=quality, progressive=True)
         output_buffer.seek(0)
-        return output_buffer.getvalue()
+        output_data = output_buffer.getvalue()
+        print(f'[RESIZE] Thumbnail saved - output size={len(output_data)} bytes')
+        return output_data
 
 def generate_thumbnail_key(original_key):
     """Generate thumbnail key with _thumb suffix"""

@@ -43,14 +43,15 @@ const GalleryManagement = () => {
     setNotification({ message, type });
   };
 
-  const loadPhotoSeries = async () => {
+  const loadPhotoSeries = async (forceRefresh = false) => {
     try {
       // Remember currently selected series
       const currentSelectedId = selectedSeries?.id;
-      
-      const series = await initializePhotoSeries();
+
+      // Always force refresh in management to see latest changes
+      const series = await initializePhotoSeries(true);
       setPhotoSeries(series);
-      
+
       // Restore selection or default to first
       if (currentSelectedId) {
         const previouslySelected = series.find(s => s.id === currentSelectedId);
@@ -112,11 +113,14 @@ const GalleryManagement = () => {
     if (successful.length > 0) {
       console.log('Upload successful, refreshing data...');
       showNotification(`Successfully uploaded ${successful.length} image(s) to "${selectedSeries.title}"`);
-      
-      // Refresh the management gallery data
+
+      // Small delay to ensure S3 write propagation
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Refresh the management gallery data first
       await loadPhotoSeries();
-      
-      // Trigger refresh of main gallery
+
+      // Then trigger refresh of main gallery
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     }
     
@@ -183,33 +187,46 @@ const GalleryManagement = () => {
   };
 
   const toggleSeriesVisibility = async (series) => {
+    console.log(`[TOGGLE_VIS] ========== toggleSeriesVisibility START ==========`);
+    console.log(`[TOGGLE_VIS] Series:`, { id: series.id, title: series.title, currentIsHidden: series.isHidden });
+
     try {
       const newIsHidden = !series.isHidden;
-      
-      // Update local state immediately
+      console.log(`[TOGGLE_VIS] Toggling visibility - new state will be isHidden=${newIsHidden}`);
+
+      // Update local state immediately for instant UI feedback
       const updatedLocalSeries = { ...series, isHidden: newIsHidden };
-      
+      console.log(`[TOGGLE_VIS] Created updated local series object:`, { id: updatedLocalSeries.id, title: updatedLocalSeries.title, isHidden: updatedLocalSeries.isHidden });
+
       // Update in photoSeries array
-      setPhotoSeries(prevSeries => 
-        prevSeries.map(s => s.id === series.id ? updatedLocalSeries : s)
-      );
-      
+      setPhotoSeries(prevSeries => {
+        const updated = prevSeries.map(s => s.id === series.id ? updatedLocalSeries : s);
+        console.log(`[TOGGLE_VIS] Updated photoSeries state - series visibility:`, updated.map(s => ({ id: s.id, title: s.title, isHidden: s.isHidden })));
+        return updated;
+      });
+
       // Update selectedSeries if it's the one being toggled
       if (selectedSeries?.id === series.id) {
+        console.log(`[TOGGLE_VIS] Updating selectedSeries state`);
         setSelectedSeries(updatedLocalSeries);
       }
-      
-      // Save to S3 in background
-      await SeriesManager.updateSeries(series.id, {
+
+      // Save to S3 (this updates the cache internally)
+      console.log(`[TOGGLE_VIS] Calling SeriesManager.updateSeries with isHidden=${newIsHidden}`);
+      const result = await SeriesManager.updateSeries(series.id, {
         isHidden: newIsHidden
       });
-      
-      // Trigger refresh of main gallery to reflect visibility change
+      console.log(`[TOGGLE_VIS] SeriesManager.updateSeries result:`, result);
+
+      // DynamoDB has strong consistency - no delay needed!
+      // Trigger refresh of main gallery to reflect visibility change immediately
+      console.log(`[TOGGLE_VIS] Dispatching refreshPhotoSeries event`);
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
-      
+
+      console.log(`[TOGGLE_VIS] Success! Series "${series.title}" is now ${newIsHidden ? 'hidden' : 'visible'}`);
       showNotification(`${series.title} is now ${newIsHidden ? 'hidden' : 'visible'}`);
     } catch (error) {
-      console.error('Error updating series visibility:', error);
+      console.error('[TOGGLE_VIS] Error updating series visibility:', error);
       showNotification('Failed to update series visibility', 'error');
       // Reload on error to restore correct state
       await loadPhotoSeries();
@@ -270,11 +287,11 @@ const GalleryManagement = () => {
 
   const saveImageOrder = async () => {
     if (!selectedSeries) return;
-    
+
     setIsSavingOrder(true);
     try {
       console.log('Saving new image order:', reorderingImages);
-      
+
       // Update the local state immediately for instant feedback
       const updatedLocalSeries = {
         ...selectedSeries,
@@ -286,24 +303,27 @@ const GalleryManagement = () => {
           title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
         }))
       };
-      
+
       // Update the selected series immediately
       setSelectedSeries(updatedLocalSeries);
-      
+
       // Update in the photoSeries array as well
-      setPhotoSeries(prevSeries => 
+      setPhotoSeries(prevSeries =>
         prevSeries.map(s => s.id === selectedSeries.id ? updatedLocalSeries : s)
       );
-      
+
       // Close dialog immediately for better UX
       setShowReorderDialog(false);
-      
-      // Save to S3 in the background
+
+      // Save to S3 (this updates the cache internally)
       await SeriesManager.reorderImages(selectedSeries.id, reorderingImages);
-      
+
+      // Small delay to ensure S3 write propagation
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // Trigger refresh of main gallery
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
-      
+
       console.log('Image order saved successfully');
       showNotification('Image order saved successfully');
     } catch (error) {
