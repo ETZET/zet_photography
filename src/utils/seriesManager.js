@@ -1,315 +1,290 @@
-import { uploadData, downloadData } from 'aws-amplify/storage';
+/**
+ * Series Manager using Amplify Data (GraphQL/DynamoDB)
+ * Provides strongly consistent database operations for photo series
+ */
 
-const SERIES_CONFIG_KEY = 'config/series-config.json';
+import { generateClient } from 'aws-amplify/data';
 
-// Initial series configuration (to be uploaded to S3 first time)
-const initialSeriesConfig = [
-  {
-    id: 1,
-    title: "Flower Decay",
-    description: "A collection exploring the beauty in decay",
-    s3Prefix: "images/flowerdecay",
-    images: [
-      "flower0.jpg", "flower1.jpg", "flower2.jpg", "flower3.jpg", "flower4.jpg",
-      "flower5.jpg", "flower6.jpg", "flower7.jpg", "flower8.jpg", "flower9.jpg",
-      "flower10.jpg", "flower11.jpg", "flower12.jpg", "flower13.jpg", "flower14.jpg",
-      "flower15.jpg", "flower16.jpg", "flower17.jpg", "flower18.jpg", "flower19.jpg",
-      "flower20.jpg", "flower21.jpg", "flower22.jpg", "flower23.jpg", "flower24.jpg",
-      "flower25.jpg", "flower26.jpg", "flower27.jpg", "flower28.jpg", "flower29.jpg",
-      "flower30.jpg", "flower31.jpg", "flower32.jpg", "flower33.jpg", "flower34.jpg",
-      "flower35.jpg", "flower36.jpg", "flower37.jpg", "flower38.jpg"
-    ],
-    isHidden: false,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z"
-  },
-  {
-    id: 2,
-    title: "Plants Autopsy",
-    description: "Botanical studies through scanning",
-    s3Prefix: "images/scanner",
-    images: [
-      "img20230423_12502676.jpg", "img20230423_12511646.jpg", "img20230423_12520227.jpg",
-      "img20230423_12524256.jpg", "img20230423_12591380.jpg", "img20230423_13001280.jpg",
-      "img20230423_13005920.jpg", "img20230423_13014120.jpg", "img20230423_13023430.jpg",
-      "img20230423_13032332.jpg", "img20230423_13040312.jpg", "img20230423_13050692.jpg",
-      "img20230423_13062462.jpg", "img20230423_13072873.jpg", "img20230423_13081452.jpg",
-      "img20230423_13100272.jpg"
-    ],
-    isHidden: false,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z"
-  },
-  {
-    id: 3,
-    title: "Random Iphone Pics",
-    description: "Everyday moments captured on mobile",
-    s3Prefix: "images/iphone",
-    images: [
-      "car.jpg", "cat.jpg", "curb.jpg", "house.jpg", "road.jpg",
-      "sand.jpg", "shell.jpg", "sky.jpg", "tree.jpg", "window.jpg"
-    ],
-    isHidden: false,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z"
-  }
-];
+const client = generateClient();
 
 export class SeriesManager {
-  
-  // Load series configuration from S3
+  // No need for caching - DynamoDB is fast and strongly consistent!
+
+  /**
+   * Load all series from DynamoDB
+   * @param {boolean} forceRefresh - Ignored (no caching needed)
+   * @returns {Promise<Array>} Transformed series data
+   */
   static async loadSeriesConfig(forceRefresh = false) {
     try {
-      console.log(`Loading series config from S3... (force refresh: ${forceRefresh})`);
-      
-      const result = await downloadData({ 
-        key: SERIES_CONFIG_KEY,
-        options: {
-          // Add cache control headers to bypass caching when forcing refresh
-          ...(forceRefresh && {
-            cacheControl: 'no-cache, no-store, must-revalidate',
-            expires: new Date(0)
-          })
-        }
-      }).result;
-      
-      const configText = await result.body.text();
-      const config = JSON.parse(configText);
-      console.log('Loaded config from S3:', config.map(s => ({ id: s.id, title: s.title, imageCount: s.images.length, isHidden: s.isHidden })));
-      
-      // Transform to the format expected by your app
-      const transformedConfig = config.map(series => ({
-        ...series,
-        photos: series.images.map((filename, index) => ({
-          id: index + 1,
-          src: `public/${series.s3Prefix}/${filename}`,
-          title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-        }))
-      }));
-      
-      console.log('Transformed config:', transformedConfig.map(s => ({ id: s.id, title: s.title, imageCount: s.images?.length || 0, photoCount: s.photos?.length || 0, isHidden: s.isHidden })));
-      return transformedConfig;
-    } catch (error) {
-      console.log('Series config not found, creating initial config...');
-      // If config doesn't exist, create it with initial data
-      await this.saveSeriesConfig(initialSeriesConfig);
-      return this.loadSeriesConfig(forceRefresh);
-    }
-  }
+      console.log('[SERIES_MGR] Loading series from DynamoDB...');
 
-  // Save series configuration to S3
-  static async saveSeriesConfig(seriesConfig) {
-    try {
-      const configData = JSON.stringify(seriesConfig, null, 2);
-      await uploadData({
-        key: SERIES_CONFIG_KEY,
-        data: configData,
-        options: {
-          contentType: 'application/json'
-        }
-      }).result;
-      
-      console.log('Series configuration saved to S3');
-      return true;
+      const { data: series, errors } = await client.models.Series.list({
+        // Sort by order field for consistent display
+        sortDirection: 'ASC'
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Errors loading series:', errors);
+        throw new Error('Failed to load series from database');
+      }
+
+      if (!series || series.length === 0) {
+        console.log('[SERIES_MGR] No series found in database');
+        return [];
+      }
+
+      console.log(`[SERIES_MGR] Loaded ${series.length} series from DynamoDB`);
+      console.log('[SERIES_MGR] Series data:', series.map(s => ({
+        id: s.id,
+        title: s.title,
+        isHidden: s.isHidden,
+        imageCount: s.images?.length || 0,
+        order: s.order
+      })));
+
+      // Transform to match existing app format
+      return this._transformConfig(series);
     } catch (error) {
-      console.error('Error saving series configuration:', error);
+      console.error('[SERIES_MGR] Error loading series:', error);
       throw error;
     }
   }
 
-  // Add new image to a series
-  static async addImageToSeries(seriesId, filename) {
+  /**
+   * Transform DynamoDB data to app format
+   * @private
+   */
+  static _transformConfig(series) {
+    console.log(`[SERIES_MGR] Transforming ${series.length} series`);
+
+    const transformed = series.map(s => ({
+      id: s.id,
+      title: s.title,
+      description: s.description,
+      s3Prefix: s.s3Prefix,
+      images: s.images || [],
+      isHidden: s.isHidden ?? false,
+      order: s.order ?? 0,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      // Transform images to photos array
+      photos: (s.images || []).map((filename, index) => ({
+        id: index + 1,
+        src: `public/${s.s3Prefix}/${filename}`,
+        title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+      }))
+    }));
+
+    console.log('[SERIES_MGR] Transformation complete');
+    return transformed;
+  }
+
+  /**
+   * Update series metadata (including visibility)
+   * @param {string} seriesId - DynamoDB ID
+   * @param {object} updates - Fields to update
+   * @returns {Promise<object>} Updated series
+   */
+  static async updateSeries(seriesId, updates) {
+    console.log(`[SERIES_MGR] Updating series ${seriesId}:`, updates);
+
     try {
-      console.log(`Adding image ${filename} to series ${seriesId}...`);
-      const config = await this.getRawSeriesConfig();
-      console.log('Current config:', config.map(s => ({ id: s.id, title: s.title, imageCount: s.images.length })));
-      
-      const seriesIndex = config.findIndex(series => series.id === seriesId);
-      
-      if (seriesIndex === -1) {
-        throw new Error(`Series with ID ${seriesId} not found`);
+      const { data, errors } = await client.models.Series.update({
+        id: seriesId,
+        ...updates
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Update errors:', errors);
+        throw new Error('Failed to update series');
       }
 
-      // Add image if it doesn't already exist
-      if (!config[seriesIndex].images.includes(filename)) {
-        config[seriesIndex].images.push(filename);
-        config[seriesIndex].updatedAt = new Date().toISOString();
-        
-        await this.saveSeriesConfig(config);
-        console.log(`Successfully added ${filename} to series "${config[seriesIndex].title}". New image count: ${config[seriesIndex].images.length}`);
-      } else {
-        console.log(`Image ${filename} already exists in series "${config[seriesIndex].title}"`);
-      }
-      
-      return config[seriesIndex];
+      console.log('[SERIES_MGR] Series updated successfully:', data);
+      return data;
     } catch (error) {
-      console.error('Error adding image to series:', error);
+      console.error('[SERIES_MGR] Error updating series:', error);
       throw error;
     }
   }
 
-  // Remove image from series
-  static async removeImageFromSeries(seriesId, filename) {
-    try {
-      const config = await this.getRawSeriesConfig();
-      const seriesIndex = config.findIndex(series => series.id === seriesId);
-      
-      if (seriesIndex === -1) {
-        throw new Error(`Series with ID ${seriesId} not found`);
-      }
-
-      config[seriesIndex].images = config[seriesIndex].images.filter(img => img !== filename);
-      config[seriesIndex].updatedAt = new Date().toISOString();
-      
-      await this.saveSeriesConfig(config);
-      console.log(`Removed ${filename} from series "${config[seriesIndex].title}"`);
-      
-      return config[seriesIndex];
-    } catch (error) {
-      console.error('Error removing image from series:', error);
-      throw error;
-    }
-  }
-
-  // Add new series
+  /**
+   * Add new series
+   */
   static async addSeries(title, description, s3Prefix) {
+    console.log(`[SERIES_MGR] Creating new series: ${title}`);
+
     try {
-      const config = await this.getRawSeriesConfig();
-      const newId = Math.max(...config.map(s => s.id)) + 1;
-      
-      const newSeries = {
-        id: newId,
+      // Get current max order
+      const { data: existingSeries } = await client.models.Series.list();
+      const maxOrder = existingSeries.reduce((max, s) => Math.max(max, s.order ?? 0), 0);
+
+      const { data, errors } = await client.models.Series.create({
         title,
         description: description || '',
         s3Prefix,
         images: [],
         isHidden: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      config.push(newSeries);
-      await this.saveSeriesConfig(config);
-      
-      console.log(`Added new series: "${title}"`);
-      return newSeries;
-    } catch (error) {
-      console.error('Error adding new series:', error);
-      throw error;
-    }
-  }
+        order: maxOrder + 1
+      });
 
-  // Update series metadata
-  static async updateSeries(seriesId, updates) {
-    try {
-      // Force refresh to get latest data before updating
-      const config = await this.getRawSeriesConfig(true);
-      const seriesIndex = config.findIndex(series => series.id === seriesId);
-      
-      if (seriesIndex === -1) {
-        throw new Error(`Series with ID ${seriesId} not found`);
+      if (errors) {
+        console.error('[SERIES_MGR] Create errors:', errors);
+        throw new Error('Failed to create series');
       }
 
-      config[seriesIndex] = {
-        ...config[seriesIndex],
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
-      
-      await this.saveSeriesConfig(config);
-      console.log(`Updated series: "${config[seriesIndex].title}"`, updates);
-      
-      return config[seriesIndex];
+      console.log('[SERIES_MGR] Series created:', data);
+      return data;
     } catch (error) {
-      console.error('Error updating series:', error);
+      console.error('[SERIES_MGR] Error creating series:', error);
       throw error;
     }
   }
 
-  // Delete series
+  /**
+   * Delete series
+   */
   static async deleteSeries(seriesId) {
+    console.log(`[SERIES_MGR] Deleting series: ${seriesId}`);
+
     try {
-      const config = await this.getRawSeriesConfig();
-      const seriesIndex = config.findIndex(series => series.id === seriesId);
-      
-      if (seriesIndex === -1) {
-        throw new Error(`Series with ID ${seriesId} not found`);
+      const { data, errors } = await client.models.Series.delete({
+        id: seriesId
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Delete errors:', errors);
+        throw new Error('Failed to delete series');
       }
 
-      const deletedSeries = config[seriesIndex];
-      config.splice(seriesIndex, 1);
-      
-      await this.saveSeriesConfig(config);
-      console.log(`Deleted series: "${deletedSeries.title}"`);
-      
-      return deletedSeries;
+      console.log('[SERIES_MGR] Series deleted:', data);
+      return data;
     } catch (error) {
-      console.error('Error deleting series:', error);
+      console.error('[SERIES_MGR] Error deleting series:', error);
       throw error;
     }
   }
 
-  // Reorder images in a series
+  /**
+   * Add image to series
+   */
+  static async addImageToSeries(seriesId, filename) {
+    console.log(`[SERIES_MGR] Adding image ${filename} to series ${seriesId}`);
+
+    try {
+      // First, get current series
+      const { data: series } = await client.models.Series.get({ id: seriesId });
+
+      if (!series) {
+        throw new Error(`Series ${seriesId} not found`);
+      }
+
+      // Add image if not already present
+      const currentImages = series.images || [];
+      if (currentImages.includes(filename)) {
+        console.log(`[SERIES_MGR] Image ${filename} already exists`);
+        return series;
+      }
+
+      const updatedImages = [...currentImages, filename];
+
+      const { data, errors } = await client.models.Series.update({
+        id: seriesId,
+        images: updatedImages
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Add image errors:', errors);
+        throw new Error('Failed to add image');
+      }
+
+      console.log(`[SERIES_MGR] Image added. New count: ${updatedImages.length}`);
+      return data;
+    } catch (error) {
+      console.error('[SERIES_MGR] Error adding image:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove image from series
+   */
+  static async removeImageFromSeries(seriesId, filename) {
+    console.log(`[SERIES_MGR] Removing image ${filename} from series ${seriesId}`);
+
+    try {
+      // Get current series
+      const { data: series } = await client.models.Series.get({ id: seriesId });
+
+      if (!series) {
+        throw new Error(`Series ${seriesId} not found`);
+      }
+
+      const updatedImages = (series.images || []).filter(img => img !== filename);
+
+      const { data, errors } = await client.models.Series.update({
+        id: seriesId,
+        images: updatedImages
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Remove image errors:', errors);
+        throw new Error('Failed to remove image');
+      }
+
+      console.log(`[SERIES_MGR] Image removed. New count: ${updatedImages.length}`);
+      return data;
+    } catch (error) {
+      console.error('[SERIES_MGR] Error removing image:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reorder images in a series
+   */
   static async reorderImages(seriesId, orderedImageNames) {
+    console.log(`[SERIES_MGR] Reordering images in series ${seriesId}`);
+
     try {
-      console.log(`Reordering images for series ${seriesId}...`);
-      // Force refresh to get latest data before reordering
-      const config = await this.getRawSeriesConfig(true);
-      const seriesIndex = config.findIndex(series => series.id === seriesId);
-      
-      if (seriesIndex === -1) {
-        throw new Error(`Series with ID ${seriesId} not found`);
+      const { data, errors } = await client.models.Series.update({
+        id: seriesId,
+        images: orderedImageNames
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Reorder errors:', errors);
+        throw new Error('Failed to reorder images');
       }
 
-      // Validate that all images are present
-      const currentImages = config[seriesIndex].images;
-      if (orderedImageNames.length !== currentImages.length) {
-        throw new Error(`Image count mismatch during reordering. Expected: ${currentImages.length}, Got: ${orderedImageNames.length}`);
-      }
-
-      // Validate that all images exist in the series
-      const currentImageSet = new Set(currentImages);
-      for (const imageName of orderedImageNames) {
-        if (!currentImageSet.has(imageName)) {
-          throw new Error(`Image ${imageName} not found in series`);
-        }
-      }
-
-      // Update the image order
-      config[seriesIndex].images = orderedImageNames;
-      config[seriesIndex].updatedAt = new Date().toISOString();
-      
-      await this.saveSeriesConfig(config);
-      console.log(`Successfully reordered images in series "${config[seriesIndex].title}". New order:`, orderedImageNames.slice(0, 3).join(', '), '...');
-      
-      return config[seriesIndex];
+      console.log('[SERIES_MGR] Images reordered successfully');
+      return data;
     } catch (error) {
-      console.error('Error reordering images:', error);
+      console.error('[SERIES_MGR] Error reordering images:', error);
       throw error;
     }
   }
 
-  // Get raw config (without photo transformations)
+  /**
+   * Get raw series config (for compatibility)
+   */
   static async getRawSeriesConfig(forceRefresh = false) {
-    try {
-      const result = await downloadData({ 
-        key: SERIES_CONFIG_KEY,
-        options: {
-          // Add cache control headers to bypass caching when forcing refresh
-          ...(forceRefresh && {
-            cacheControl: 'no-cache, no-store, must-revalidate',
-            expires: new Date(0)
-          })
-        }
-      }).result;
-      const configText = await result.body.text();
-      return JSON.parse(configText);
-    } catch (error) {
-      console.log('Creating initial config...');
-      await this.saveSeriesConfig(initialSeriesConfig);
-      return initialSeriesConfig;
-    }
+    const { data: series } = await client.models.Series.list();
+    return series || [];
+  }
+
+  /**
+   * Clear cache (no-op for GraphQL version)
+   */
+  static clearCache() {
+    console.log('[SERIES_MGR] clearCache() - no cache to clear (using DynamoDB)');
+  }
+
+  /**
+   * Save series config (no-op - updates are atomic)
+   */
+  static async saveSeriesConfig(seriesConfig) {
+    console.warn('[SERIES_MGR] saveSeriesConfig() called - this is deprecated with GraphQL');
+    console.log('[SERIES_MGR] Use updateSeries() instead for atomic updates');
   }
 }
-
-export default SeriesManager;
