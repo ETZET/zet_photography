@@ -104,7 +104,7 @@ export class ThumbnailService {
       
       // Upload original image first
       await uploadData({
-        key: uploadPath,
+        path: uploadPath,
         data: imageFile,
         options: {
           contentType: imageFile.type

@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getUrl } from 'aws-amplify/storage';
 import { ThumbnailService } from '../utils/thumbnailService';
+import { useURLCache } from '../contexts/URLCacheContext';
 
 const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
+  const { getCachedUrl, setCachedUrl } = useURLCache();
   const [isInView, setIsInView] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
@@ -34,68 +36,90 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
 
       try {
         let pathToLoad = src;
+        let finalUrl = null;
 
         // If thumbnail is requested, try thumbnail first
         if (useThumbnail) {
           const thumbnailPath = ThumbnailService.getThumbnailPath(src);
 
-          try {
-            // Check if thumbnail exists
-            // CRITICAL: Short expiry + useAccelerateEndpoint: false to reduce browser caching
-            const thumbnailResult = await getUrl({
-              path: thumbnailPath,
-              options: {
-                validateObjectExistence: true,
-                expiresIn: 300, // 5 minutes instead of 1 hour
-                useAccelerateEndpoint: false
-              }
-            });
-            
+          // Check cache first for thumbnail
+          const cachedThumbnailUrl = getCachedUrl(thumbnailPath);
+          if (cachedThumbnailUrl) {
             pathToLoad = thumbnailPath;
-            setImageUrl(thumbnailResult.url.toString());
-            
-          } catch (thumbnailError) {
-            console.log('Thumbnail not found, generating from original:', thumbnailPath);
-            
-            // Thumbnail doesn't exist, try to generate it
+            finalUrl = cachedThumbnailUrl;
+          } else {
             try {
-              await ThumbnailService.generateThumbnailForExistingImage(src);
-              
-              // Try loading thumbnail again after generation
-              const newThumbnailResult = await getUrl({
+              // Check if thumbnail exists
+              // CRITICAL: Short expiry + useAccelerateEndpoint: false to reduce browser caching
+              const thumbnailResult = await getUrl({
                 path: thumbnailPath,
                 options: {
                   validateObjectExistence: true,
-                  expiresIn: 300, // 5 minutes
+                  expiresIn: 300, // 5 minutes instead of 1 hour
                   useAccelerateEndpoint: false
                 }
               });
-              
+
               pathToLoad = thumbnailPath;
-              setImageUrl(newThumbnailResult.url.toString());
-              
-            } catch (generationError) {
-              console.log('Failed to generate thumbnail, falling back to original:', generationError);
-              // Fall back to original image
-              pathToLoad = src;
+              finalUrl = thumbnailResult.url.toString();
+              // Cache the thumbnail URL
+              setCachedUrl(thumbnailPath, finalUrl, 300);
+
+            } catch (thumbnailError) {
+              console.log('Thumbnail not found, generating from original:', thumbnailPath);
+
+              // Thumbnail doesn't exist, try to generate it
+              try {
+                await ThumbnailService.generateThumbnailForExistingImage(src);
+
+                // Try loading thumbnail again after generation
+                const newThumbnailResult = await getUrl({
+                  path: thumbnailPath,
+                  options: {
+                    validateObjectExistence: true,
+                    expiresIn: 300, // 5 minutes
+                    useAccelerateEndpoint: false
+                  }
+                });
+
+                pathToLoad = thumbnailPath;
+                finalUrl = newThumbnailResult.url.toString();
+                // Cache the newly generated thumbnail URL
+                setCachedUrl(thumbnailPath, finalUrl, 300);
+
+              } catch (generationError) {
+                console.log('Failed to generate thumbnail, falling back to original:', generationError);
+                // Fall back to original image
+                pathToLoad = src;
+              }
             }
           }
         }
-        
-        // If we haven't set an image URL yet (either no thumbnail requested or fallback needed)
-        if (!imageUrl || pathToLoad === src) {
-          const result = await getUrl({
-            path: pathToLoad,
-            options: {
-              validateObjectExistence: true,
-              expiresIn: 300, // 5 minutes to reduce browser caching
-              useAccelerateEndpoint: false
-            }
-          });
-          
-          setImageUrl(result.url.toString());
+
+        // If we haven't set a URL yet (either no thumbnail requested or fallback needed)
+        if (!finalUrl) {
+          // Check cache for original
+          const cachedOriginalUrl = getCachedUrl(pathToLoad);
+          if (cachedOriginalUrl) {
+            finalUrl = cachedOriginalUrl;
+          } else {
+            const result = await getUrl({
+              path: pathToLoad,
+              options: {
+                validateObjectExistence: true,
+                expiresIn: 300, // 5 minutes to reduce browser caching
+                useAccelerateEndpoint: false
+              }
+            });
+
+            finalUrl = result.url.toString();
+            // Cache the original URL
+            setCachedUrl(pathToLoad, finalUrl, 300);
+          }
         }
-        
+
+        setImageUrl(finalUrl);
+
       } catch (err) {
         console.error('Error getting image URL:', err);
         setError(err.message || 'Failed to load image');
@@ -105,7 +129,7 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
     };
 
     fetchImageUrl();
-  }, [src, useThumbnail, cacheVersion]); // Re-fetch when cacheVersion changes
+  }, [src, useThumbnail, cacheVersion, getCachedUrl, setCachedUrl]); // Re-fetch when cacheVersion changes
 
   // Intersection Observer for lazy loading
   useEffect(() => {

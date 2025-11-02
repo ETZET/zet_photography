@@ -6,6 +6,7 @@ import AboutPage from './components/AboutPage';
 import LoginPage from './components/LoginPage';
 import GalleryManagement from './components/GalleryManagement';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
+import { URLCacheProvider } from './contexts/URLCacheContext.jsx';
 import { initializePhotoSeries } from './data/photoSeries';
 
 const AppContent = () => {
@@ -51,12 +52,9 @@ const AppContent = () => {
   // Function to refresh data (can be called from management page)
   useEffect(() => {
     const handleRefresh = (event) => {
-      console.log('Refreshing photo series data with force refresh...');
-      // Always force refresh when triggered by management changes to bypass cache
-      // Add a small delay to ensure S3 write has propagated
-      setTimeout(() => {
-        loadPhotoSeriesData(true);
-      }, 100);
+      console.log('Refreshing photo series data...');
+      // DynamoDB has strong consistency - no delay or force refresh needed
+      loadPhotoSeriesData();
     };
 
     // Listen for custom refresh events
@@ -188,7 +186,9 @@ const AppContent = () => {
 const App = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <URLCacheProvider>
+        <AppContent />
+      </URLCacheProvider>
     </AuthProvider>
   );
 };

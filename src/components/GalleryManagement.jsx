@@ -48,8 +48,8 @@ const GalleryManagement = () => {
       // Remember currently selected series
       const currentSelectedId = selectedSeries?.id;
 
-      // Always force refresh in management to see latest changes
-      const series = await initializePhotoSeries(true);
+      // DynamoDB provides strong consistency - no force refresh needed
+      const series = await initializePhotoSeries();
       setPhotoSeries(series);
 
       // Restore selection or default to first
@@ -114,13 +114,7 @@ const GalleryManagement = () => {
       console.log('Upload successful, refreshing data...');
       showNotification(`Successfully uploaded ${successful.length} image(s) to "${selectedSeries.title}"`);
 
-      // Small delay to ensure S3 write propagation
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Refresh the management gallery data first
-      await loadPhotoSeries();
-
-      // Then trigger refresh of main gallery
+      // DynamoDB has strong consistency - trigger refresh immediately
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     }
     
