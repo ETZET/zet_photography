@@ -19,13 +19,11 @@ export class SeriesManager {
     try {
       console.log('[SERIES_MGR] Loading series from DynamoDB...');
 
-      const { data: series, errors } = await client.models.Series.list({
-        // Sort by order field for consistent display
-        sortDirection: 'ASC'
-      });
+      const { data: series, errors } = await client.models.Series.list();
 
       if (errors) {
         console.error('[SERIES_MGR] Errors loading series:', errors);
+        console.error('[SERIES_MGR] Errors loading series JSON:', JSON.stringify(errors, null, 2));
         throw new Error('Failed to load series from database');
       }
 
@@ -34,8 +32,11 @@ export class SeriesManager {
         return [];
       }
 
-      console.log(`[SERIES_MGR] Loaded ${series.length} series from DynamoDB`);
-      console.log('[SERIES_MGR] Series data:', series.map(s => ({
+      // Sort by order field in memory
+      const sortedSeries = [...series].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      console.log(`[SERIES_MGR] Loaded ${sortedSeries.length} series from DynamoDB`);
+      console.log('[SERIES_MGR] Series data:', sortedSeries.map(s => ({
         id: s.id,
         title: s.title,
         isHidden: s.isHidden,
@@ -44,7 +45,7 @@ export class SeriesManager {
       })));
 
       // Transform to match existing app format
-      return this._transformConfig(series);
+      return this._transformConfig(sortedSeries);
     } catch (error) {
       console.error('[SERIES_MGR] Error loading series:', error);
       throw error;
@@ -130,6 +131,7 @@ export class SeriesManager {
 
       if (errors) {
         console.error('[SERIES_MGR] Create errors:', errors);
+        console.error('[SERIES_MGR] Create errors JSON:', JSON.stringify(errors, null, 2));
         throw new Error('Failed to create series');
       }
 
