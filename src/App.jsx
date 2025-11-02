@@ -1,15 +1,30 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Instagram, Mail, LogOut, Settings } from 'lucide-react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import ScrollableGallery from './components/ScrollableGallery';
 import PhotoViewer from './components/PhotoViewer';
 import AboutPage from './components/AboutPage';
 import LoginPage from './components/LoginPage';
 import GalleryManagement from './components/GalleryManagement';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
-import { URLCacheProvider } from './contexts/URLCacheContext.jsx';
 import { initializePhotoSeries } from './data/photoSeries';
 
+// Create a client with optimized settings for S3 presigned URLs
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Presigned URLs are valid for 5 minutes (300s), so we set staleTime accordingly
+      staleTime: 4 * 60 * 1000, // 4 minutes (1 min buffer before expiry)
+      cacheTime: 5 * 60 * 1000, // 5 minutes (match presigned URL expiry)
+      refetchOnWindowFocus: false, // Don't refetch on window focus (URLs are still valid)
+      refetchOnReconnect: false, // Don't refetch on reconnect (URLs are still valid)
+      retry: 1, // Retry once if failed
+    },
+  },
+});
+
 const AppContent = () => {
+  const queryClient = useQueryClient();
   const { isAuthenticated, logout } = useAuth();
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [currentSeriesPhotos, setCurrentSeriesPhotos] = useState([]);
@@ -53,6 +68,9 @@ const AppContent = () => {
   useEffect(() => {
     const handleRefresh = (event) => {
       console.log('Refreshing photo series data...');
+      // Invalidate all presigned URL caches
+      console.log('[React Query] Invalidating all presigned URL queries');
+      queryClient.invalidateQueries({ queryKey: ['presigned-url'] });
       // DynamoDB has strong consistency - no delay or force refresh needed
       loadPhotoSeriesData();
     };
@@ -60,7 +78,7 @@ const AppContent = () => {
     // Listen for custom refresh events
     window.addEventListener('refreshPhotoSeries', handleRefresh);
     return () => window.removeEventListener('refreshPhotoSeries', handleRefresh);
-  }, [loadPhotoSeriesData]);
+  }, [loadPhotoSeriesData, queryClient]);
   
   const handlePhotoClick = (photo, seriesPhotos) => {
     setSelectedPhoto(photo);
@@ -185,11 +203,11 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <AuthProvider>
-      <URLCacheProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
         <AppContent />
-      </URLCacheProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 };
 
