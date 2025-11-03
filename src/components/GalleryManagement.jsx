@@ -232,17 +232,12 @@ const GalleryManagement = () => {
         setSelectedSeries(updatedLocalSeries);
       }
 
-      // Save to S3 (this updates the cache internally)
+      // Save to DynamoDB
       console.log(`[TOGGLE_VIS] Calling SeriesManager.updateSeries with isHidden=${newIsHidden}`);
       const result = await SeriesManager.updateSeries(series.id, {
         isHidden: newIsHidden
       });
       console.log(`[TOGGLE_VIS] SeriesManager.updateSeries result:`, result);
-
-      // DynamoDB has strong consistency - no delay needed!
-      // Trigger refresh of main gallery to reflect visibility change immediately
-      console.log(`[TOGGLE_VIS] Dispatching refreshPhotoSeries event`);
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
 
       console.log(`[TOGGLE_VIS] Success! Series "${series.title}" is now ${newIsHidden ? 'hidden' : 'visible'}`);
       showNotification(`${series.title} is now ${newIsHidden ? 'hidden' : 'visible'}`);
@@ -336,14 +331,8 @@ const GalleryManagement = () => {
       // Close dialog immediately for better UX
       setShowReorderDialog(false);
 
-      // Save to S3 (this updates the cache internally)
+      // Save to DynamoDB
       await SeriesManager.reorderImages(selectedSeries.id, reorderingImages);
-
-      // Small delay to ensure S3 write propagation
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Trigger refresh of main gallery
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
 
       console.log('Image order saved successfully');
       showNotification('Image order saved successfully');
@@ -362,6 +351,49 @@ const GalleryManagement = () => {
     setReorderingImages([]);
     setDraggedItem(null);
     setDragOverIndex(null);
+  };
+
+  const handleDeleteImageFromReorder = async (imageName, index) => {
+    if (!selectedSeries) return;
+
+    const confirmDelete = window.confirm(`Delete "${imageName}" from this series? This cannot be undone.`);
+    if (!confirmDelete) return;
+
+    try {
+      console.log(`Deleting image: ${imageName}`);
+
+      // Remove from local reordering state immediately
+      const updatedImages = reorderingImages.filter((_, i) => i !== index);
+      setReorderingImages(updatedImages);
+
+      // Delete from database
+      await SeriesManager.removeImageFromSeries(selectedSeries.id, imageName);
+
+      // Update the selected series in local state
+      const updatedLocalSeries = {
+        ...selectedSeries,
+        images: updatedImages,
+        photos: updatedImages.map((filename, idx) => ({
+          id: idx + 1,
+          src: `public/${selectedSeries.s3Prefix}/${filename}`,
+          title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+        }))
+      };
+
+      setSelectedSeries(updatedLocalSeries);
+
+      // Update in the photoSeries array as well
+      setPhotoSeries(prevSeries =>
+        prevSeries.map(s => s.id === selectedSeries.id ? updatedLocalSeries : s)
+      );
+
+      showNotification(`Image deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      showNotification('Failed to delete image', 'error');
+      // Reload to restore correct state on error
+      await loadPhotoSeries();
+    }
   };
 
   if (loading) {
@@ -679,7 +711,7 @@ const GalleryManagement = () => {
                 </button>
               </div>
               <p className="text-sm text-gray-600 mt-2">
-                Drag and drop images to reorder them. Changes will be saved when you click "Save Order".
+                Drag and drop images to reorder them. Click the red X button to delete an image. Changes will be saved when you click "Save Order".
               </p>
             </div>
             
@@ -713,9 +745,23 @@ const GalleryManagement = () => {
                           hover:border-gray-400
                         `}
                       >
+                        {/* Order number badge */}
                         <div className="absolute top-1 left-1 bg-black bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded z-10 font-medium">
                           {index + 1}
                         </div>
+
+                        {/* Delete button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteImageFromReorder(imageName, index);
+                          }}
+                          className="absolute top-1 right-1 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-1 rounded z-10 transition-all"
+                          title="Delete image"
+                        >
+                          <X size={14} />
+                        </button>
+
                         <LazyImage
                           src={imagePath}
                           alt={imageName}
