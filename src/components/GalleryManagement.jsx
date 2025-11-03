@@ -71,60 +71,87 @@ const GalleryManagement = () => {
     if (!files.length || !selectedSeries) return;
 
     setIsUploading(true);
-    const uploadPromises = files.map(async (file, index) => {
-      try {
-        // Generate unique filename with timestamp
-        const timestamp = Date.now();
-        const fileExtension = file.name.split('.').pop();
-        const fileName = `${selectedSeries.title.toLowerCase().replace(/\s+/g, '')}_${timestamp}_${index}.${fileExtension}`;
-        
-        // Upload to the selected series' S3 prefix (add public/ prefix)
-        const key = `public/${selectedSeries.s3Prefix}/${fileName}`;
-        
-        // Use ThumbnailService to process upload (uploads both original and thumbnail)
-        const result = await ThumbnailService.processImageUpload(file, key);
-        console.log('Upload result:', result);
+    setUploadProgress(0);
 
-        // Add image to series configuration in S3
-        await SeriesManager.addImageToSeries(selectedSeries.id, fileName);
+    const results = [];
+    const BATCH_SIZE = 5; // Process 5 files at a time to avoid Lambda rate limiting
 
-        return {
-          fileName,
-          originalPath: result.originalPath,
-          thumbnailPath: result.thumbnailPath,
-          success: true
-        };
-      } catch (error) {
-        console.error(`Error uploading ${file.name}:`, error);
-        return {
-          fileName: file.name,
-          error: error.message,
-          success: false
-        };
+    // Process files in batches
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(files.length / BATCH_SIZE)} (${batch.length} files)`);
+
+      const batchPromises = batch.map(async (file, batchIndex) => {
+        const globalIndex = i + batchIndex;
+        try {
+          // Generate unique filename with timestamp
+          const timestamp = Date.now();
+          const fileExtension = file.name.split('.').pop();
+          const fileName = `${selectedSeries.title.toLowerCase().replace(/\s+/g, '')}_${timestamp}_${globalIndex}.${fileExtension}`;
+
+          // Upload to the selected series' S3 prefix (add public/ prefix)
+          const key = `public/${selectedSeries.s3Prefix}/${fileName}`;
+
+          console.log(`[${globalIndex + 1}/${files.length}] Uploading ${file.name}...`);
+
+          // Use ThumbnailService to process upload (uploads both original and thumbnail)
+          const result = await ThumbnailService.processImageUpload(file, key);
+          console.log(`[${globalIndex + 1}/${files.length}] Upload complete:`, result);
+
+          // Add image to series configuration in S3
+          await SeriesManager.addImageToSeries(selectedSeries.id, fileName);
+
+          // Update progress
+          const progress = Math.round(((globalIndex + 1) / files.length) * 100);
+          setUploadProgress(progress);
+
+          return {
+            fileName,
+            originalPath: result.originalPath,
+            thumbnailPath: result.thumbnailPath,
+            success: true
+          };
+        } catch (error) {
+          console.error(`[${globalIndex + 1}/${files.length}] Error uploading ${file.name}:`, error);
+          return {
+            fileName: file.name,
+            error: error.message,
+            success: false
+          };
+        }
+      });
+
+      // Wait for current batch to complete before starting next batch
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+
+      // Small delay between batches to further reduce Lambda rate limiting
+      if (i + BATCH_SIZE < files.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-    });
+    }
 
-    const results = await Promise.all(uploadPromises);
-    
     // Show results
     const successful = results.filter(r => r.success);
     const failed = results.filter(r => !r.success);
-    
+
+    console.log(`Upload complete: ${successful.length} successful, ${failed.length} failed`);
+
     if (successful.length > 0) {
       console.log('Upload successful, refreshing data...');
-      showNotification(`Successfully uploaded ${successful.length} image(s) to "${selectedSeries.title}"`);
+      showNotification(`Successfully uploaded ${successful.length} of ${files.length} image(s) to "${selectedSeries.title}"`);
 
       // DynamoDB has strong consistency - trigger refresh immediately
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     }
-    
+
     if (failed.length > 0) {
-      showNotification(`Failed to upload ${failed.length} image(s)`, 'error');
+      showNotification(`Failed to upload ${failed.length} image(s): ${failed.map(f => f.fileName).join(', ')}`, 'error');
     }
 
     setIsUploading(false);
     setUploadProgress(0);
-    
+
     // Clear the file input
     event.target.value = '';
   };
@@ -478,14 +505,15 @@ const GalleryManagement = () => {
                     
                     {isUploading ? (
                       <div>
-                        <p className="text-lg mb-2">Uploading...</p>
-                        <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-                          <div 
-                            className="bg-gray-900 h-2 rounded-full transition-all duration-300" 
+                        <p className="text-lg mb-2">Uploading images...</p>
+                        <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                          <div
+                            className="bg-gray-900 h-3 rounded-full transition-all duration-300"
                             style={{ width: `${uploadProgress}%` }}
                           ></div>
                         </div>
-                        <p className="text-sm text-gray-600">{uploadProgress}%</p>
+                        <p className="text-sm text-gray-600 font-medium">{uploadProgress}% complete</p>
+                        <p className="text-xs text-gray-500 mt-1">Processing in batches of 5 to ensure reliable uploads</p>
                       </div>
                     ) : (
                       <>

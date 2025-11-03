@@ -5,7 +5,16 @@
 
 import { generateClient } from 'aws-amplify/data';
 
-const client = generateClient();
+// Use IAM auth mode for read operations to support both authenticated and guest users
+// Guest users get temporary IAM credentials from Cognito Identity Pool
+const readClient = generateClient({
+  authMode: 'iam'
+});
+
+// Use User Pool auth mode for write operations (authenticated users only)
+const writeClient = generateClient({
+  authMode: 'userPool'
+});
 
 export class SeriesManager {
   // No need for caching - DynamoDB is fast and strongly consistent!
@@ -19,7 +28,7 @@ export class SeriesManager {
     try {
       console.log('[SERIES_MGR] Loading series from DynamoDB...');
 
-      const { data: series, errors } = await client.models.Series.list();
+      const { data: series, errors } = await readClient.models.Series.list();
 
       if (errors) {
         console.error('[SERIES_MGR] Errors loading series:', errors);
@@ -91,7 +100,7 @@ export class SeriesManager {
     console.log(`[SERIES_MGR] Updating series ${seriesId}:`, updates);
 
     try {
-      const { data, errors } = await client.models.Series.update({
+      const { data, errors } = await writeClient.models.Series.update({
         id: seriesId,
         ...updates
       });
@@ -117,10 +126,10 @@ export class SeriesManager {
 
     try {
       // Get current max order
-      const { data: existingSeries } = await client.models.Series.list();
+      const { data: existingSeries } = await readClient.models.Series.list();
       const maxOrder = existingSeries.reduce((max, s) => Math.max(max, s.order ?? 0), 0);
 
-      const { data, errors } = await client.models.Series.create({
+      const { data, errors } = await writeClient.models.Series.create({
         title,
         description: description || '',
         s3Prefix,
@@ -150,7 +159,7 @@ export class SeriesManager {
     console.log(`[SERIES_MGR] Deleting series: ${seriesId}`);
 
     try {
-      const { data, errors } = await client.models.Series.delete({
+      const { data, errors } = await writeClient.models.Series.delete({
         id: seriesId
       });
 
@@ -175,7 +184,7 @@ export class SeriesManager {
 
     try {
       // First, get current series
-      const { data: series } = await client.models.Series.get({ id: seriesId });
+      const { data: series } = await readClient.models.Series.get({ id: seriesId });
 
       if (!series) {
         throw new Error(`Series ${seriesId} not found`);
@@ -190,7 +199,7 @@ export class SeriesManager {
 
       const updatedImages = [...currentImages, filename];
 
-      const { data, errors } = await client.models.Series.update({
+      const { data, errors } = await writeClient.models.Series.update({
         id: seriesId,
         images: updatedImages
       });
@@ -216,7 +225,7 @@ export class SeriesManager {
 
     try {
       // Get current series
-      const { data: series } = await client.models.Series.get({ id: seriesId });
+      const { data: series } = await readClient.models.Series.get({ id: seriesId });
 
       if (!series) {
         throw new Error(`Series ${seriesId} not found`);
@@ -224,7 +233,7 @@ export class SeriesManager {
 
       const updatedImages = (series.images || []).filter(img => img !== filename);
 
-      const { data, errors } = await client.models.Series.update({
+      const { data, errors } = await writeClient.models.Series.update({
         id: seriesId,
         images: updatedImages
       });
@@ -249,7 +258,7 @@ export class SeriesManager {
     console.log(`[SERIES_MGR] Reordering images in series ${seriesId}`);
 
     try {
-      const { data, errors } = await client.models.Series.update({
+      const { data, errors } = await writeClient.models.Series.update({
         id: seriesId,
         images: orderedImageNames
       });
@@ -271,7 +280,7 @@ export class SeriesManager {
    * Get raw series config (for compatibility)
    */
   static async getRawSeriesConfig(forceRefresh = false) {
-    const { data: series } = await client.models.Series.list();
+    const { data: series } = await readClient.models.Series.list();
     return series || [];
   }
 
