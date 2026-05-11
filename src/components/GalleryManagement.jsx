@@ -24,17 +24,16 @@ const GalleryManagement = () => {
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [notification, setNotification] = useState(null);
+  // track per-image visibility toggles in-flight so we can disable the button
+  const [togglingImage, setTogglingImage] = useState(null);
 
   useEffect(() => {
     loadPhotoSeries();
   }, []);
 
-  // Auto-hide notification after 3 seconds
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 3000);
+      const timer = setTimeout(() => setNotification(null), 3000);
       return () => clearTimeout(timer);
     }
   }, [notification]);
@@ -45,14 +44,10 @@ const GalleryManagement = () => {
 
   const loadPhotoSeries = async (forceRefresh = false) => {
     try {
-      // Remember currently selected series
       const currentSelectedId = selectedSeries?.id;
-
-      // DynamoDB provides strong consistency - no force refresh needed
       const series = await initializePhotoSeries();
       setPhotoSeries(series);
 
-      // Restore selection or default to first
       if (currentSelectedId) {
         const previouslySelected = series.find(s => s.id === currentSelectedId);
         setSelectedSeries(previouslySelected || series[0]);
@@ -74,74 +69,45 @@ const GalleryManagement = () => {
     setUploadProgress(0);
 
     const results = [];
-    const BATCH_SIZE = 5; // Process 5 files at a time to avoid Lambda rate limiting
+    const BATCH_SIZE = 5;
 
-    // Process files in batches
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
       const batch = files.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(files.length / BATCH_SIZE)} (${batch.length} files)`);
 
       const batchPromises = batch.map(async (file, batchIndex) => {
         const globalIndex = i + batchIndex;
         try {
-          // Generate unique filename with timestamp
           const timestamp = Date.now();
           const fileExtension = file.name.split('.').pop();
           const fileName = `${selectedSeries.title.toLowerCase().replace(/\s+/g, '')}_${timestamp}_${globalIndex}.${fileExtension}`;
-
-          // Upload to the selected series' S3 prefix (add public/ prefix)
           const key = `public/${selectedSeries.s3Prefix}/${fileName}`;
 
-          console.log(`[${globalIndex + 1}/${files.length}] Uploading ${file.name}...`);
-
-          // Use ThumbnailService to process upload (uploads both original and thumbnail)
           const result = await ThumbnailService.processImageUpload(file, key);
-          console.log(`[${globalIndex + 1}/${files.length}] Upload complete:`, result);
-
-          // Add image to series configuration in S3
           await SeriesManager.addImageToSeries(selectedSeries.id, fileName);
 
-          // Update progress
           const progress = Math.round(((globalIndex + 1) / files.length) * 100);
           setUploadProgress(progress);
 
-          return {
-            fileName,
-            originalPath: result.originalPath,
-            thumbnailPath: result.thumbnailPath,
-            success: true
-          };
+          return { fileName, originalPath: result.originalPath, thumbnailPath: result.thumbnailPath, success: true };
         } catch (error) {
-          console.error(`[${globalIndex + 1}/${files.length}] Error uploading ${file.name}:`, error);
-          return {
-            fileName: file.name,
-            error: error.message,
-            success: false
-          };
+          console.error(`Error uploading ${file.name}:`, error);
+          return { fileName: file.name, error: error.message, success: false };
         }
       });
 
-      // Wait for current batch to complete before starting next batch
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
 
-      // Small delay between batches to further reduce Lambda rate limiting
       if (i + BATCH_SIZE < files.length) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    // Show results
     const successful = results.filter(r => r.success);
     const failed = results.filter(r => !r.success);
 
-    console.log(`Upload complete: ${successful.length} successful, ${failed.length} failed`);
-
     if (successful.length > 0) {
-      console.log('Upload successful, refreshing data...');
       showNotification(`Successfully uploaded ${successful.length} of ${files.length} image(s) to "${selectedSeries.title}"`);
-
-      // DynamoDB has strong consistency - trigger refresh immediately
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     }
 
@@ -151,14 +117,10 @@ const GalleryManagement = () => {
 
     setIsUploading(false);
     setUploadProgress(0);
-
-    // Clear the file input
     event.target.value = '';
   };
 
-  const handleSeriesSelect = (series) => {
-    setSelectedSeries(series);
-  };
+  const handleSeriesSelect = (series) => setSelectedSeries(series);
 
   const handleAddSeries = async () => {
     if (!seriesFormData.title || !seriesFormData.s3Prefix) {
@@ -172,15 +134,12 @@ const GalleryManagement = () => {
         seriesFormData.description,
         `images/${seriesFormData.s3Prefix.toLowerCase().replace(/\s+/g, '-')}`
       );
-      
+
       setShowAddSeriesDialog(false);
       setSeriesFormData({ title: '', description: '', s3Prefix: '' });
       await loadPhotoSeries();
       setSelectedSeries(newSeries);
-      
-      // Trigger refresh of main gallery to show new series
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
-      
       showNotification(`Series "${newSeries.title}" created successfully`);
     } catch (error) {
       console.error('Error adding series:', error);
@@ -196,10 +155,7 @@ const GalleryManagement = () => {
       setShowDeleteConfirm(false);
       setDeletingSeries(null);
       await loadPhotoSeries();
-      
-      // Trigger refresh of main gallery to reflect deletion
       window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
-      
       showNotification(`Series "${deletingSeries.title}" has been deleted`);
     } catch (error) {
       console.error('Error deleting series:', error);
@@ -208,50 +164,68 @@ const GalleryManagement = () => {
   };
 
   const toggleSeriesVisibility = async (series) => {
-    console.log(`[TOGGLE_VIS] ========== toggleSeriesVisibility START ==========`);
-    console.log(`[TOGGLE_VIS] Series:`, { id: series.id, title: series.title, currentIsHidden: series.isHidden });
-
     try {
       const newIsHidden = !series.isHidden;
-      console.log(`[TOGGLE_VIS] Toggling visibility - new state will be isHidden=${newIsHidden}`);
-
-      // Update local state immediately for instant UI feedback
       const updatedLocalSeries = { ...series, isHidden: newIsHidden };
-      console.log(`[TOGGLE_VIS] Created updated local series object:`, { id: updatedLocalSeries.id, title: updatedLocalSeries.title, isHidden: updatedLocalSeries.isHidden });
 
-      // Update in photoSeries array
-      setPhotoSeries(prevSeries => {
-        const updated = prevSeries.map(s => s.id === series.id ? updatedLocalSeries : s);
-        console.log(`[TOGGLE_VIS] Updated photoSeries state - series visibility:`, updated.map(s => ({ id: s.id, title: s.title, isHidden: s.isHidden })));
-        return updated;
-      });
+      setPhotoSeries(prevSeries =>
+        prevSeries.map(s => s.id === series.id ? updatedLocalSeries : s)
+      );
 
-      // Update selectedSeries if it's the one being toggled
       if (selectedSeries?.id === series.id) {
-        console.log(`[TOGGLE_VIS] Updating selectedSeries state`);
         setSelectedSeries(updatedLocalSeries);
       }
 
-      // Save to DynamoDB
-      console.log(`[TOGGLE_VIS] Calling SeriesManager.updateSeries with isHidden=${newIsHidden}`);
-      const result = await SeriesManager.updateSeries(series.id, {
-        isHidden: newIsHidden
-      });
-      console.log(`[TOGGLE_VIS] SeriesManager.updateSeries result:`, result);
-
-      console.log(`[TOGGLE_VIS] Success! Series "${series.title}" is now ${newIsHidden ? 'hidden' : 'visible'}`);
+      await SeriesManager.updateSeries(series.id, { isHidden: newIsHidden });
       showNotification(`${series.title} is now ${newIsHidden ? 'hidden' : 'visible'}`);
+      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     } catch (error) {
-      console.error('[TOGGLE_VIS] Error updating series visibility:', error);
+      console.error('Error updating series visibility:', error);
       showNotification('Failed to update series visibility', 'error');
-      // Reload on error to restore correct state
       await loadPhotoSeries();
     }
   };
 
+  /**
+   * Toggle public visibility for a single image within the selected series.
+   * Optimistically updates local state, then persists. On error, reloads.
+   */
+  const toggleImageVisibility = async (imageName) => {
+    if (!selectedSeries || togglingImage === imageName) return;
+
+    const wasHidden = (selectedSeries.hiddenImages ?? []).includes(imageName);
+    const willHide = !wasHidden;
+    setTogglingImage(imageName);
+
+    // Optimistic local update
+    const currentHidden = new Set(selectedSeries.hiddenImages ?? []);
+    if (willHide) currentHidden.add(imageName);
+    else currentHidden.delete(imageName);
+
+    const updatedSeries = {
+      ...selectedSeries,
+      hiddenImages: [...currentHidden],
+      photos: (selectedSeries.photos ?? []).map(p =>
+        p.filename === imageName ? { ...p, hidden: willHide } : p
+      )
+    };
+    setSelectedSeries(updatedSeries);
+    setPhotoSeries(prev => prev.map(s => s.id === selectedSeries.id ? updatedSeries : s));
+
+    try {
+      await SeriesManager.toggleImageVisibility(selectedSeries.id, [imageName], willHide);
+      showNotification(`${imageName} is now ${willHide ? 'hidden from public view' : 'public'}`);
+      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
+    } catch (error) {
+      console.error('Error toggling image visibility:', error);
+      showNotification('Failed to update image visibility', 'error');
+      await loadPhotoSeries();
+    } finally {
+      setTogglingImage(null);
+    }
+  };
+
   const openReorderDialog = (series) => {
-    console.log('Opening reorder dialog for series:', series.title);
-    console.log('Current image order:', series.images);
     setReorderingImages([...series.images]);
     setShowReorderDialog(true);
   };
@@ -267,9 +241,7 @@ const GalleryManagement = () => {
     setDragOverIndex(index);
   };
 
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
-  };
+  const handleDragLeave = () => setDragOverIndex(null);
 
   const handleDrop = (e, dropIndex) => {
     e.preventDefault();
@@ -277,20 +249,12 @@ const GalleryManagement = () => {
 
     const newImages = [...reorderingImages];
     const draggedImage = newImages[draggedItem];
-    
-    // Remove the dragged item from its original position
     newImages.splice(draggedItem, 1);
-    
-    // If we're moving the item forward and removed an item before the drop position,
-    // we need to adjust the index
+
     let adjustedIndex = dropIndex;
-    if (draggedItem < dropIndex) {
-      adjustedIndex = dropIndex - 1;
-    }
-    
-    // Insert at the new position
+    if (draggedItem < dropIndex) adjustedIndex = dropIndex - 1;
+
     newImages.splice(adjustedIndex, 0, draggedImage);
-    
     setReorderingImages(newImages);
     setDraggedItem(null);
     setDragOverIndex(null);
@@ -306,40 +270,30 @@ const GalleryManagement = () => {
 
     setIsSavingOrder(true);
     try {
-      console.log('Saving new image order:', reorderingImages);
-
-      // Update the local state immediately for instant feedback
+      const hiddenSet = new Set(selectedSeries.hiddenImages ?? []);
       const updatedLocalSeries = {
         ...selectedSeries,
         images: [...reorderingImages],
-        // Also update photos array to reflect new order
         photos: reorderingImages.map((filename, index) => ({
           id: index + 1,
           src: `public/${selectedSeries.s3Prefix}/${filename}`,
+          filename,
+          hidden: hiddenSet.has(filename),
           title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
         }))
       };
 
-      // Update the selected series immediately
       setSelectedSeries(updatedLocalSeries);
-
-      // Update in the photoSeries array as well
       setPhotoSeries(prevSeries =>
         prevSeries.map(s => s.id === selectedSeries.id ? updatedLocalSeries : s)
       );
-
-      // Close dialog immediately for better UX
       setShowReorderDialog(false);
 
-      // Save to DynamoDB
       await SeriesManager.reorderImages(selectedSeries.id, reorderingImages);
-
-      console.log('Image order saved successfully');
       showNotification('Image order saved successfully');
     } catch (error) {
       console.error('Error saving image order:', error);
       showNotification('Failed to save image order', 'error');
-      // Reload to restore correct state on error
       await loadPhotoSeries();
     } finally {
       setIsSavingOrder(false);
@@ -360,29 +314,25 @@ const GalleryManagement = () => {
     if (!confirmDelete) return;
 
     try {
-      console.log(`Deleting image: ${imageName}`);
-
-      // Remove from local reordering state immediately
       const updatedImages = reorderingImages.filter((_, i) => i !== index);
       setReorderingImages(updatedImages);
 
-      // Delete from database
       await SeriesManager.removeImageFromSeries(selectedSeries.id, imageName);
 
-      // Update the selected series in local state
       const updatedLocalSeries = {
         ...selectedSeries,
         images: updatedImages,
+        hiddenImages: (selectedSeries.hiddenImages ?? []).filter(img => img !== imageName),
         photos: updatedImages.map((filename, idx) => ({
           id: idx + 1,
           src: `public/${selectedSeries.s3Prefix}/${filename}`,
+          filename,
+          hidden: (selectedSeries.hiddenImages ?? []).includes(filename),
           title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
         }))
       };
 
       setSelectedSeries(updatedLocalSeries);
-
-      // Update in the photoSeries array as well
       setPhotoSeries(prevSeries =>
         prevSeries.map(s => s.id === selectedSeries.id ? updatedLocalSeries : s)
       );
@@ -391,7 +341,6 @@ const GalleryManagement = () => {
     } catch (error) {
       console.error('Error deleting image:', error);
       showNotification('Failed to delete image', 'error');
-      // Reload to restore correct state on error
       await loadPhotoSeries();
     }
   };
@@ -404,14 +353,17 @@ const GalleryManagement = () => {
     );
   }
 
+  // Computed: how many images in the selected series are hidden
+  const hiddenCount = (selectedSeries?.hiddenImages ?? []).length;
+
   return (
     <div className="min-h-screen bg-white">
       {/* Toast Notification */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 animate-slide-in`}>
           <div className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm ${
-            notification.type === 'error' 
-              ? 'bg-red-50 border border-red-200 text-red-800' 
+            notification.type === 'error'
+              ? 'bg-red-50 border border-red-200 text-red-800'
               : 'bg-green-50 border border-green-200 text-green-800'
           }`}>
             {notification.type === 'error' ? (
@@ -429,6 +381,7 @@ const GalleryManagement = () => {
           </div>
         </div>
       )}
+
       {/* Header */}
       <div className="border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-8">
@@ -464,61 +417,64 @@ const GalleryManagement = () => {
               </button>
             </div>
             <div className="space-y-2">
-              {photoSeries.map((series) => (
-                <div
-                  key={series.id}
-                  className={`border transition-colors duration-200 ${
-                    selectedSeries?.id === series.id
-                      ? 'border-gray-400 bg-gray-50'
-                      : 'border-gray-200'
-                  }`}
-                >
-                  <button
-                    onClick={() => handleSeriesSelect(series)}
-                    className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
+              {photoSeries.map((series) => {
+                const seriesHiddenCount = (series.hiddenImages ?? []).length;
+                return (
+                  <div
+                    key={series.id}
+                    className={`border transition-colors duration-200 ${
+                      selectedSeries?.id === series.id
+                        ? 'border-gray-400 bg-gray-50'
+                        : 'border-gray-200'
+                    }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-medium flex items-center gap-2">
-                          {series.title}
-                          {series.isHidden && <EyeOff size={14} className="text-gray-400" />}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {series.images?.length || 0} images
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {series.s3Prefix}
-                        </p>
+                    <button
+                      onClick={() => handleSeriesSelect(series)}
+                      className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-medium flex items-center gap-2">
+                            {series.title}
+                            {series.isHidden && <EyeOff size={14} className="text-gray-400" />}
+                          </h3>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {series.images?.length || 0} images
+                            {seriesHiddenCount > 0 && (
+                              <span className="ml-2 text-gray-500">
+                                · {seriesHiddenCount} hidden
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">{series.s3Prefix}</p>
+                        </div>
                       </div>
+                    </button>
+                    <div className="flex border-t border-gray-200">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSeriesVisibility(series); }}
+                        className="flex-1 p-2 hover:bg-gray-100 transition-colors text-sm flex items-center justify-center gap-1"
+                        title={series.isHidden ? 'Make visible' : 'Hide series'}
+                      >
+                        {series.isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                        {series.isHidden ? 'Show' : 'Hide'}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingSeries(series);
+                          setShowDeleteConfirm(true);
+                        }}
+                        className="flex-1 p-2 hover:bg-red-50 hover:text-red-600 transition-colors text-sm flex items-center justify-center gap-1 border-l border-gray-200"
+                        title="Delete series"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
                     </div>
-                  </button>
-                  <div className="flex border-t border-gray-200">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSeriesVisibility(series);
-                      }}
-                      className="flex-1 p-2 hover:bg-gray-100 transition-colors text-sm flex items-center justify-center gap-1"
-                      title={series.isHidden ? 'Make visible' : 'Hide series'}
-                    >
-                      {series.isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
-                      {series.isHidden ? 'Show' : 'Hide'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeletingSeries(series);
-                        setShowDeleteConfirm(true);
-                      }}
-                      className="flex-1 p-2 hover:bg-red-50 hover:text-red-600 transition-colors text-sm flex items-center justify-center gap-1 border-l border-gray-200"
-                      title="Delete series"
-                    >
-                      <Trash2 size={14} />
-                      Delete
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -528,13 +484,11 @@ const GalleryManagement = () => {
               <>
                 {/* Upload Section */}
                 <div className="mb-8">
-                  <h2 className="text-xl font-light mb-4">
-                    Upload to "{selectedSeries.title}"
-                  </h2>
-                  
+                  <h2 className="text-xl font-light mb-4">Upload to "{selectedSeries.title}"</h2>
+
                   <div className="border-2 border-dashed border-gray-300 p-8 text-center hover:border-gray-400 transition-colors">
                     <Upload className="mx-auto mb-4 text-gray-400" size={48} />
-                    
+
                     {isUploading ? (
                       <div>
                         <p className="text-lg mb-2">Uploading images...</p>
@@ -550,9 +504,7 @@ const GalleryManagement = () => {
                     ) : (
                       <>
                         <p className="text-lg mb-2">Drop files here or click to upload</p>
-                        <p className="text-sm text-gray-600 mb-4">
-                          Supports JPG, PNG, WebP images
-                        </p>
+                        <p className="text-sm text-gray-600 mb-4">Supports JPG, PNG, WebP images</p>
                         <input
                           type="file"
                           multiple
@@ -578,6 +530,11 @@ const GalleryManagement = () => {
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-light">
                       Current Images ({selectedSeries.images?.length || 0})
+                      {hiddenCount > 0 && (
+                        <span className="ml-2 text-sm text-gray-500 font-normal">
+                          · {hiddenCount} hidden from public
+                        </span>
+                      )}
                     </h3>
                     {selectedSeries.images && selectedSeries.images.length > 0 && (
                       <button
@@ -589,20 +546,52 @@ const GalleryManagement = () => {
                       </button>
                     )}
                   </div>
-                  
+
                   {selectedSeries.images && selectedSeries.images.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                       {selectedSeries.images.slice(0, 12).map((imageName, index) => {
                         const imagePath = `public/${selectedSeries.s3Prefix}/${imageName}`;
+                        const isHidden = (selectedSeries.hiddenImages ?? []).includes(imageName);
+                        const isToggling = togglingImage === imageName;
+
                         return (
-                          <div key={index} className="aspect-square bg-gray-100 border border-gray-200 overflow-hidden relative">
-                            <LazyImage
-                              src={imagePath}
-                              alt={imageName}
-                              useThumbnail={true}
-                            />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-20 transition-all duration-200 flex items-end">
-                              <p className="text-xs text-white p-2 opacity-0 hover:opacity-100 transition-opacity truncate w-full">
+                          <div
+                            key={index}
+                            className={`aspect-square bg-gray-100 border overflow-hidden relative group ${
+                              isHidden ? 'border-gray-400' : 'border-gray-200'
+                            }`}
+                          >
+                            <div className={isHidden ? 'opacity-40 saturate-50 transition-all' : 'transition-all'}>
+                              <LazyImage src={imagePath} alt={imageName} useThumbnail={true} />
+                            </div>
+
+                            {/* HIDDEN-state indicators */}
+                            {isHidden && (
+                              <>
+                                <div className="absolute inset-0 pointer-events-none border-2 border-dashed border-gray-500/60" />
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                  <div className="bg-gray-900/85 backdrop-blur-sm text-white text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded flex items-center gap-1">
+                                    <EyeOff size={10} /> Hidden
+                                  </div>
+                                </div>
+                              </>
+                            )}
+
+                            {/* Eye toggle button — always visible when hidden, hover-only when visible */}
+                            <button
+                              onClick={() => toggleImageVisibility(imageName)}
+                              disabled={isToggling}
+                              title={isHidden ? 'Make public' : 'Hide from public view'}
+                              className={`absolute top-1.5 right-1.5 z-10 p-1.5 rounded bg-white/90 hover:bg-white shadow text-gray-800 transition-opacity disabled:opacity-50 ${
+                                isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                              }`}
+                            >
+                              {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                            </button>
+
+                            {/* Filename overlay on hover */}
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-end pointer-events-none">
+                              <p className="text-xs text-white p-2 opacity-0 group-hover:opacity-100 transition-opacity truncate w-full">
                                 {imageName}
                               </p>
                             </div>
@@ -636,9 +625,7 @@ const GalleryManagement = () => {
             <h2 className="text-xl font-light mb-4">Add New Series</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                 <input
                   type="text"
                   value={seriesFormData.title}
@@ -648,9 +635,7 @@ const GalleryManagement = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
                   value={seriesFormData.description}
                   onChange={(e) => setSeriesFormData({ ...seriesFormData, description: e.target.value })}
@@ -660,9 +645,7 @@ const GalleryManagement = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Folder Name (S3 Prefix)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Folder Name (S3 Prefix)</label>
                 <input
                   type="text"
                   value={seriesFormData.s3Prefix}
@@ -703,18 +686,15 @@ const GalleryManagement = () => {
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-light">Reorder Images - {selectedSeries.title}</h2>
-                <button
-                  onClick={cancelReorder}
-                  className="p-2 hover:bg-gray-100 transition-colors rounded"
-                >
+                <button onClick={cancelReorder} className="p-2 hover:bg-gray-100 transition-colors rounded">
                   <X size={20} />
                 </button>
               </div>
               <p className="text-sm text-gray-600 mt-2">
-                Drag and drop images to reorder them. Click the red X button to delete an image. Changes will be saved when you click "Save Order".
+                Drag and drop images to reorder them. Click the red X button to delete an image.
               </p>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {reorderingImages.map((imageName, index) => {
@@ -722,14 +702,14 @@ const GalleryManagement = () => {
                   const isDragging = draggedItem === index;
                   const isDragOver = dragOverIndex === index;
                   const showDropIndicator = isDragOver && draggedItem !== null && draggedItem !== index;
-                  
+                  const isHidden = (selectedSeries.hiddenImages ?? []).includes(imageName);
+
                   return (
                     <div key={`${imageName}-${index}`} className="relative">
-                      {/* Drop indicator line */}
                       {showDropIndicator && draggedItem > index && (
                         <div className="absolute left-0 top-0 w-1 h-full bg-blue-500 z-20 -translate-x-2 animate-pulse" />
                       )}
-                      
+
                       <div
                         draggable
                         onDragStart={(e) => handleDragStart(e, index)}
@@ -738,19 +718,16 @@ const GalleryManagement = () => {
                         onDrop={(e) => handleDrop(e, index)}
                         onDragEnd={handleDragEnd}
                         className={`
-                          relative aspect-square bg-gray-100 border-2 overflow-hidden cursor-move
-                          transition-all duration-200
+                          relative aspect-square bg-gray-100 border-2 overflow-hidden cursor-move transition-all duration-200
                           ${isDragging ? 'opacity-30 scale-95' : ''}
                           ${showDropIndicator ? 'border-blue-500 shadow-lg' : 'border-gray-200'}
                           hover:border-gray-400
                         `}
                       >
-                        {/* Order number badge */}
                         <div className="absolute top-1 left-1 bg-black bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded z-10 font-medium">
                           {index + 1}
                         </div>
 
-                        {/* Delete button */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -762,19 +739,25 @@ const GalleryManagement = () => {
                           <X size={14} />
                         </button>
 
-                        <LazyImage
-                          src={imagePath}
-                          alt={imageName}
-                          useThumbnail={true}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity">
+                        <div className={isHidden ? 'opacity-40 saturate-50' : ''}>
+                          <LazyImage src={imagePath} alt={imageName} useThumbnail={true} />
+                        </div>
+
+                        {isHidden && (
+                          <div className="absolute inset-x-0 bottom-6 flex justify-center pointer-events-none">
+                            <div className="bg-gray-900/85 text-white text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <EyeOff size={9} /> Hidden
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
                           <p className="absolute bottom-1 left-1 right-1 text-xs text-white truncate px-1">
                             {imageName}
                           </p>
                         </div>
                       </div>
-                      
-                      {/* Drop indicator line */}
+
                       {showDropIndicator && draggedItem < index && (
                         <div className="absolute right-0 top-0 w-1 h-full bg-blue-500 z-20 translate-x-2 animate-pulse" />
                       )}
@@ -783,7 +766,7 @@ const GalleryManagement = () => {
                 })}
               </div>
             </div>
-            
+
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button
                 onClick={cancelReorder}
@@ -798,15 +781,9 @@ const GalleryManagement = () => {
                 disabled={isSavingOrder}
               >
                 {isSavingOrder ? (
-                  <>
-                    <RefreshCw size={16} className="animate-spin" />
-                    Saving...
-                  </>
+                  <><RefreshCw size={16} className="animate-spin" />Saving...</>
                 ) : (
-                  <>
-                    <Save size={16} />
-                    Save Order
-                  </>
+                  <><Save size={16} />Save Order</>
                 )}
               </button>
             </div>

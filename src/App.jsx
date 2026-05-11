@@ -37,22 +37,29 @@ const AppContent = () => {
       setLoading(true);
       console.log(`[APP] ========== Loading photo series data (forceRefresh: ${forceRefresh}) ==========`);
       const series = await initializePhotoSeries(forceRefresh);
-      console.log(`[APP] Raw series data received:`, series.map(s => ({
-        id: s.id,
-        title: s.title,
-        isHidden: s.isHidden,
-        imageCount: s.images?.length || 0,
-        photoCount: s.photos?.length || 0
-      })));
 
       // Filter out hidden series for the main gallery
-      const visibleSeries = series.filter(s => !s.isHidden);
-      console.log(`[APP] After visibility filter - Total: ${series.length}, Visible: ${visibleSeries.length}, Hidden: ${series.length - visibleSeries.length}`);
-      console.log(`[APP] Visible series:`, visibleSeries.map(s => ({ id: s.id, title: s.title, isHidden: s.isHidden })));
-      console.log(`[APP] Hidden series:`, series.filter(s => s.isHidden).map(s => ({ id: s.id, title: s.title, isHidden: s.isHidden })));
+      const visibleSeries = series
+        .filter(s => !s.isHidden)
+        // Also strip per-image hidden photos from the public view.
+        // Strip from both `images` (legacy callers) and `photos` (current callers).
+        .map(s => {
+          const hiddenSet = new Set(s.hiddenImages ?? []);
+          if (hiddenSet.size === 0) return s;
+          return {
+            ...s,
+            images: (s.images ?? []).filter(img => !hiddenSet.has(img)),
+            photos: (s.photos ?? []).filter(p => !hiddenSet.has(p.filename) && !p.hidden),
+          };
+        });
+
+      console.log(`[APP] After visibility filter - Total series: ${series.length}, Visible: ${visibleSeries.length}`);
+      const hiddenPhotoCount = series.reduce((sum, s) => sum + (s.hiddenImages?.length ?? 0), 0);
+      if (hiddenPhotoCount > 0) {
+        console.log(`[APP] Filtered out ${hiddenPhotoCount} hidden photo(s) across all series`);
+      }
 
       setPhotoSeries(visibleSeries);
-      console.log(`[APP] Photo series state updated with ${visibleSeries.length} visible series`);
     } catch (error) {
       console.error('[APP] Error loading photo series:', error);
     } finally {

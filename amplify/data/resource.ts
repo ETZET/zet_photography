@@ -21,6 +21,10 @@ const schema = a.schema({
       description: a.string(),
       s3Prefix: a.string().required(), // e.g., "images/flowerdecay"
       images: a.string().array().required(), // Array of image filenames
+      // Per-image visibility. Filenames listed here are hidden from public view
+      // but still visible (with a "Hidden" indicator) in admin Gallery Management.
+      // Null/undefined is treated as empty array for backwards compatibility.
+      hiddenImages: a.string().array(),
       isHidden: a.boolean().required().default(false),
       order: a.integer().default(0), // For manual sorting
     })

@@ -34,3 +34,8 @@ scripts/lambda_function.zip
 
 # photos
 public/images/
+
+# testing
+.env.test
+test-results/
+tests/debug.spec.ts

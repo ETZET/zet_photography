@@ -17,10 +17,9 @@ export class ThumbnailGeneratorStack {
         lambda.LayerVersion.fromLayerVersionArn(
           scope,
           'PillowLayer',
-          'arn:aws:lambda:us-east-2:770693421928:layer:Klayers-p311-Pillow:6'
+          'arn:aws:lambda:us-east-2:770693421928:layer:Klayers-p311-Pillow:11'
         )
       ],
-      functionName: 'ThumbnailGeneratorFunction',
       description: 'Generates thumbnails for uploaded images',
       timeout: Duration.seconds(30),
       memorySize: 512,
@@ -36,10 +35,9 @@ export class ThumbnailGeneratorStack {
       action: 'lambda:InvokeFunction',
     });
 
-    // Output the Lambda function ARN
+    // Output the Lambda function ARN — no exportName so sandbox and prod can coexist
     new CfnOutput(scope, 'ThumbnailGeneratorFunctionArn', {
       value: this.function.functionArn,
-      exportName: 'ThumbnailGeneratorFunctionArn',
     });
   }
 }

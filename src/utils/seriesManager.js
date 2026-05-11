@@ -79,31 +79,37 @@ export class SeriesManager {
   }
 
   /**
-   * Transform DynamoDB data to app format
+   * Transform DynamoDB data to app format.
+   * NOTE: We always normalize hiddenImages to an array so callers never have to
+   * null-check it. Photos array carries a `hidden` flag for convenience in the
+   * admin UI; the source of truth remains `hiddenImages: string[]`.
    * @private
    */
   static _transformConfig(series) {
-    console.log(`[SERIES_MGR] Transforming ${series.length} series`);
+    const transformed = series.map(s => {
+      const hiddenImages = s.hiddenImages ?? [];
+      const hiddenSet = new Set(hiddenImages);
+      return {
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        s3Prefix: s.s3Prefix,
+        images: s.images || [],
+        hiddenImages,
+        isHidden: s.isHidden ?? false,
+        order: s.order ?? 0,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        photos: (s.images || []).map((filename, index) => ({
+          id: index + 1,
+          src: `public/${s.s3Prefix}/${filename}`,
+          filename,
+          hidden: hiddenSet.has(filename),
+          title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+        }))
+      };
+    });
 
-    const transformed = series.map(s => ({
-      id: s.id,
-      title: s.title,
-      description: s.description,
-      s3Prefix: s.s3Prefix,
-      images: s.images || [],
-      isHidden: s.isHidden ?? false,
-      order: s.order ?? 0,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      // Transform images to photos array
-      photos: (s.images || []).map((filename, index) => ({
-        id: index + 1,
-        src: `public/${s.s3Prefix}/${filename}`,
-        title: filename.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-      }))
-    }));
-
-    console.log('[SERIES_MGR] Transformation complete');
     return transformed;
   }
 
@@ -154,6 +160,7 @@ export class SeriesManager {
         description: description || '',
         s3Prefix,
         images: [],
+        hiddenImages: [],
         isHidden: false,
         order: maxOrder + 1
       });
@@ -256,11 +263,14 @@ export class SeriesManager {
       }
 
       const updatedImages = (series.images || []).filter(img => img !== filename);
+      // Also strip the filename from hiddenImages so we don't leave orphaned entries.
+      const updatedHidden = (series.hiddenImages || []).filter(img => img !== filename);
 
       const writeClient = await getClient('write');
       const { data, errors } = await writeClient.models.Series.update({
         id: seriesId,
-        images: updatedImages
+        images: updatedImages,
+        hiddenImages: updatedHidden
       });
 
       if (errors) {
@@ -268,7 +278,6 @@ export class SeriesManager {
         throw new Error('Failed to remove image');
       }
 
-      console.log(`[SERIES_MGR] Image removed. New count: ${updatedImages.length}`);
       return data;
     } catch (error) {
       console.error('[SERIES_MGR] Error removing image:', error);
@@ -298,6 +307,45 @@ export class SeriesManager {
       return data;
     } catch (error) {
       console.error('[SERIES_MGR] Error reordering images:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle per-image public visibility.
+   * @param {string} seriesId
+   * @param {string[]} filenames - one or many filenames to flip
+   * @param {boolean} hide - true to hide from public, false to make public
+   * @returns updated series record
+   */
+  static async toggleImageVisibility(seriesId, filenames, hide) {
+    console.log(`[SERIES_MGR] toggleImageVisibility seriesId=${seriesId} hide=${hide} files=`, filenames);
+
+    try {
+      const readClient = await getClient('read');
+      const { data: series } = await readClient.models.Series.get({ id: seriesId });
+      if (!series) throw new Error(`Series ${seriesId} not found`);
+
+      const current = new Set(series.hiddenImages || []);
+      filenames.forEach(f => {
+        if (hide) current.add(f);
+        else current.delete(f);
+      });
+
+      const writeClient = await getClient('write');
+      const { data, errors } = await writeClient.models.Series.update({
+        id: seriesId,
+        hiddenImages: [...current]
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] toggleImageVisibility errors:', errors);
+        throw new Error('Failed to update image visibility');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[SERIES_MGR] Error toggling image visibility:', error);
       throw error;
     }
   }
