@@ -248,6 +248,47 @@ export class SeriesManager {
   }
 
   /**
+   * Add multiple images to series in a single read-modify-write operation.
+   * Use this instead of calling addImageToSeries in a loop to avoid DynamoDB
+   * race conditions where concurrent reads all see the same initial state.
+   */
+  static async addImagesToSeries(seriesId, filenames) {
+    console.log(`[SERIES_MGR] Adding ${filenames.length} images to series ${seriesId}`);
+
+    try {
+      const readClient = await getClient('read');
+      const { data: series } = await readClient.models.Series.get({ id: seriesId });
+
+      if (!series) {
+        throw new Error(`Series ${seriesId} not found`);
+      }
+
+      const currentImages = series.images || [];
+      const newFilenames = filenames.filter(f => !currentImages.includes(f));
+      if (newFilenames.length === 0) return series;
+
+      const updatedImages = [...currentImages, ...newFilenames];
+
+      const writeClient = await getClient('write');
+      const { data, errors } = await writeClient.models.Series.update({
+        id: seriesId,
+        images: updatedImages
+      });
+
+      if (errors) {
+        console.error('[SERIES_MGR] Add images errors:', errors);
+        throw new Error('Failed to add images');
+      }
+
+      console.log(`[SERIES_MGR] Images added. New count: ${updatedImages.length}`);
+      return data;
+    } catch (error) {
+      console.error('[SERIES_MGR] Error adding images:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Remove image from series
    */
   static async removeImageFromSeries(seriesId, filename) {

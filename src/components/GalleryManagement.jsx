@@ -68,6 +68,7 @@ const GalleryManagement = () => {
     setIsUploading(true);
     setUploadProgress(0);
 
+    // Step 1: Upload all files to S3 in parallel batches, collecting results
     const results = [];
     const BATCH_SIZE = 5;
 
@@ -83,7 +84,6 @@ const GalleryManagement = () => {
           const key = `public/${selectedSeries.s3Prefix}/${fileName}`;
 
           const result = await ThumbnailService.processImageUpload(file, key);
-          await SeriesManager.addImageToSeries(selectedSeries.id, fileName);
 
           const progress = Math.round(((globalIndex + 1) / files.length) * 100);
           setUploadProgress(progress);
@@ -106,9 +106,20 @@ const GalleryManagement = () => {
     const successful = results.filter(r => r.success);
     const failed = results.filter(r => !r.success);
 
+    // Step 2: Write all new filenames to DynamoDB in a single operation
     if (successful.length > 0) {
+      const newFilenames = successful.map(r => r.fileName);
+      await SeriesManager.addImagesToSeries(selectedSeries.id, newFilenames);
+
+      // Update local state so the UI reflects the new images without a full reload
+      const updatedSeries = {
+        ...selectedSeries,
+        images: [...(selectedSeries.images || []), ...newFilenames],
+      };
+      setSelectedSeries(updatedSeries);
+      setPhotoSeries(prev => prev.map(s => s.id === selectedSeries.id ? updatedSeries : s));
+
       showNotification(`Successfully uploaded ${successful.length} of ${files.length} image(s) to "${selectedSeries.title}"`);
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     }
 
     if (failed.length > 0) {
@@ -139,7 +150,6 @@ const GalleryManagement = () => {
       setSeriesFormData({ title: '', description: '', s3Prefix: '' });
       await loadPhotoSeries();
       setSelectedSeries(newSeries);
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
       showNotification(`Series "${newSeries.title}" created successfully`);
     } catch (error) {
       console.error('Error adding series:', error);
@@ -155,7 +165,6 @@ const GalleryManagement = () => {
       setShowDeleteConfirm(false);
       setDeletingSeries(null);
       await loadPhotoSeries();
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
       showNotification(`Series "${deletingSeries.title}" has been deleted`);
     } catch (error) {
       console.error('Error deleting series:', error);
@@ -178,7 +187,6 @@ const GalleryManagement = () => {
 
       await SeriesManager.updateSeries(series.id, { isHidden: newIsHidden });
       showNotification(`${series.title} is now ${newIsHidden ? 'hidden' : 'visible'}`);
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     } catch (error) {
       console.error('Error updating series visibility:', error);
       showNotification('Failed to update series visibility', 'error');
@@ -215,7 +223,6 @@ const GalleryManagement = () => {
     try {
       await SeriesManager.toggleImageVisibility(selectedSeries.id, [imageName], willHide);
       showNotification(`${imageName} is now ${willHide ? 'hidden from public view' : 'public'}`);
-      window.dispatchEvent(new CustomEvent('refreshPhotoSeries'));
     } catch (error) {
       console.error('Error toggling image visibility:', error);
       showNotification('Failed to update image visibility', 'error');
