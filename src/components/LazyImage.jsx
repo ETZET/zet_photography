@@ -48,7 +48,11 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
 
   if (isError && !isLoading) {
     return (
-      <div className="w-full h-full bg-red-100 flex items-center justify-center text-red-600 text-sm p-4">
+      <div
+        className="w-full h-full bg-red-100 flex items-center justify-center text-red-600 text-sm p-4"
+        onClick={onClick}
+        style={onClick ? { cursor: 'pointer' } : undefined}
+      >
         <div className="text-center">
           <div>⚠️ Error loading image</div>
           <div className="text-xs mt-1">{error?.message || 'Unknown error'}</div>
