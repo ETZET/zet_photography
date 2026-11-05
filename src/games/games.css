@@ -260,7 +260,7 @@
 .px-who.lg { font-size: 18px; }
 .px-who.lg > b { min-width: 24px; padding: 4px 5px 5px; }
 .px-who.lg > span { padding: 4px 8px 5px; }
-.px-seat .px-who { margin: 3px 0 0; max-width: 100%; }
+.px-seat .px-who { margin: 3px 0 0; max-width: none; } /* names are capped at 10 units, show them whole */
 .px-frame.danger { box-shadow: 0 -6px 0 0 var(--line), 0 6px 0 0 var(--line), -6px 0 0 0 var(--line), 6px 0 0 0 var(--line), inset 0 0 0 3px var(--evil); }
 
 /* ---------- motion (all stepped, to read as pixel animation) ---------- */
