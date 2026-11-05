@@ -35,7 +35,7 @@ async function snap(page: Page, label: string) {
 
 /** Shared state as this page currently sees it (dev-only window hook). */
 async function readGame(page: Page): Promise<Game> {
-  return page.evaluate(() => (window as unknown as { __avalonRoom: { game: Game } }).__avalonRoom.game);
+  return page.evaluate(() => (window as unknown as { __room: { game: Game } }).__room.game);
 }
 
 /** Wait until every page has received the same game state. */
@@ -43,7 +43,7 @@ async function settle(pages: Page[]) {
   await expect.poll(async () => {
     const all = await Promise.all(pages.map(p => p.evaluate(() => {
       const w = window as any;
-      return w.__avalonPending ? `pending:${Math.random()}` : JSON.stringify(w.__avalonRoom?.game);
+      return w.__roomPending ? `pending:${Math.random()}` : JSON.stringify(w.__room?.game);
     })));
     return all.every(x => x === all[0]);
   }, { timeout: 20_000 }).toBe(true);

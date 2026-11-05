@@ -16,6 +16,29 @@ export const PALETTE = {
 };
 
 export const SPRITES = {
+  moon: [
+    '...kkkk...',
+    '..kwwwk...',
+    '.kwwwk....',
+    'kwwwk.....',
+    'kwwwk.....',
+    'kwwwwk....',
+    'kwwwwwkkkk',
+    '.kwwwwwwk.',
+    '..kkwwkk..',
+    '....kk....',
+  ],
+  sun: [
+    '....y....',
+    '.y.kkk.y.',
+    '..kyyyk..',
+    '.kyywyyk.',
+    'ykyyyyyky',
+    '.kyyyyyk.',
+    '..kyyyk..',
+    '.y.kkk.y.',
+    '....y....',
+  ],
   crown: [
     '.k...k...k.',
     'kyk.kyk.kyk',

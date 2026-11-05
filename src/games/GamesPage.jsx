@@ -4,9 +4,11 @@ import './games.css';
 import PixelSprite, { Portrait, Torch } from './pixel/PixelSprite';
 import { SKYLINE } from './pixel/portraits';
 import AvalonGame from './avalon/AvalonGame';
+import WerewolfGame from './werewolf/WerewolfGame';
 
 export const GAMES = [
-  { id: 'avalon', title: '阿瓦隆', en: 'AVALON', desc: '5–10 人身份推理 · 免登录 · 分享链接开房', ready: true },
+  { id: 'avalon', title: '阿瓦隆', en: 'AVALON', desc: '5–10 人身份推理 · 免登录 · 分享链接开房', ready: true, art: 'merlin' },
+  { id: 'werewolf', title: '双身份狼人', en: 'WEREWOLF · TWO LIVES', desc: '5–10 人 · 每人两张身份牌 · 手机当法官', ready: true, art: 'wolf' },
   { id: 'soon', title: '敬请期待', en: 'COMING SOON', desc: '下一个小游戏正在像素化…', ready: false },
 ];
 
@@ -39,10 +41,11 @@ export function PixelShell({ children }) {
 }
 
 export default function GamesPage({ gameId, onSelectGame }) {
-  if (gameId === 'avalon') {
+  const Game = { avalon: AvalonGame, werewolf: WerewolfGame }[gameId];
+  if (Game) {
     return (
       <PixelShell>
-        <AvalonGame onExit={() => onSelectGame(null)} />
+        <Game onExit={() => onSelectGame(null)} />
       </PixelShell>
     );
   }
@@ -62,7 +65,7 @@ export default function GamesPage({ gameId, onSelectGame }) {
         {GAMES.map(g => (
           <button key={g.id} className="px-frame px-tile" disabled={!g.ready} onClick={() => g.ready && onSelectGame(g.id)}>
             <div className={`px-portrait-bg ${g.ready ? '' : 'opacity-60'}`}>
-              {g.ready ? <Portrait role="merlin" scale={3} className="px-bob" /> : <PixelSprite name="dice" scale={12} />}
+              {g.ready ? <Portrait role={g.art} scale={3} className="px-bob" /> : <PixelSprite name="dice" scale={12} />}
             </div>
             <div className="min-w-0">
               <div className="fs-12 c-dim tracking-[0.2em]">{g.en}</div>

@@ -287,3 +287,29 @@
   .px-seat .px-seat-ring, .px-seat-top svg, .px-seat.target .px-seat-ring, .px-stamp, .px-slide, .px-quest, .px-confetti { animation: none !important; }
   .px-confetti { display: none; }
 }
+
+/* ---------- 双身份狼人 ---------- */
+.px-night { position: fixed; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 20%, rgba(20,24,70,0.35), rgba(4,4,18,0.72));
+  animation: px-dusk 0.8s steps(4) both; }
+@keyframes px-dusk { from { opacity: 0; } to { opacity: 1; } }
+.px-lives { display: inline-flex; gap: 3px; align-items: center; margin-right: 2px; }
+.px-lives i { width: 8px; height: 8px; background: #3b2f6c; box-shadow: 0 0 0 2px var(--line); }
+.px-lives i.on { background: var(--evil); box-shadow: 0 0 0 2px var(--line), inset 2px 2px 0 0 #ff9a8a; }
+.px-seat.out .px-seat-ring { filter: grayscale(1) brightness(0.5); }
+.px-seat.out .px-who { opacity: 0.55; }
+.px-rcard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 12px 12px; min-width: 120px; background: var(--panel-lo);
+  box-shadow: 0 -4px 0 0 var(--line), 0 4px 0 0 var(--line), -4px 0 0 0 var(--line), 4px 0 0 0 var(--line), inset 0 0 0 3px var(--panel-hi); }
+.px-rcard.good { background: linear-gradient(180deg, #24408f 0 55%, #182c66 55%); }
+.px-rcard.wolf { background: linear-gradient(180deg, #7a1f2c 0 55%, #52121c 55%); }
+.px-rcard.now { box-shadow: 0 -4px 0 0 var(--line), 0 4px 0 0 var(--line), -4px 0 0 0 var(--line), 4px 0 0 0 var(--line), inset 0 0 0 3px var(--gold); animation: px-pop 0.3s steps(3) both; }
+.px-rcard.wait { opacity: 0.8; }
+.px-rcard.dead { filter: grayscale(1) brightness(0.6); }
+.px-rcard-x { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 72px; color: var(--evil); text-shadow: 4px 4px 0 var(--line); animation: px-stamp 0.3s steps(3) both; }
+.px-zzz span { display: inline-block; animation: px-zzz 1.8s steps(3) infinite; }
+.px-zzz span:nth-child(2) { animation-delay: 0.3s; font-size: 0.8em; }
+.px-zzz span:nth-child(3) { animation-delay: 0.6s; font-size: 0.6em; }
+@keyframes px-zzz { 0% { transform: translateY(4px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(-8px); opacity: 0; } }
+.px-rise { animation: px-rise 0.8s steps(4) both; }
+@keyframes px-rise { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 640px) { .px-rcard { min-width: 104px; padding: 8px 8px 10px; } }
+@media (prefers-reduced-motion: reduce) { .px-night, .px-rcard, .px-rcard-x, .px-zzz span, .px-rise { animation: none !important; } }

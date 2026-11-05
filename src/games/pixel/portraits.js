@@ -9,6 +9,7 @@
 //   Oberon   – fairy king: antlers, pointed ears, sly grin, fireflies (green)
 //   Minion   – tusked grunt in kettle helm with an axe (iron/crimson)
 import { paint } from './paint';
+import { WOLF_PORTRAITS } from './wolfPortraits';
 
 const K = '#170f22';
 const S = 32;
@@ -265,7 +266,7 @@ const lady = paint(S, S, p => {
   p.dots([[4, 3], [28, 18], [6, 16], [29, 6]], '#c8fff8');
 });
 
-export const PORTRAITS = { merlin, percival, servant, assassin, morgana, mordred, oberon, minion, emblem, lady };
+export const PORTRAITS = { merlin, percival, servant, assassin, morgana, mordred, oberon, minion, emblem, lady, ...WOLF_PORTRAITS };
 
 // 16x16 player tokens: seat-coloured hood/hair + tunic, 3 hair styles.
 const SEAT_COLORS = [

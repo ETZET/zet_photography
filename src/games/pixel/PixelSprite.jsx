@@ -53,8 +53,10 @@ export default function PixelSprite({ name, portrait, pixels, colors, scale = 4,
   );
 }
 
+/** `scale` is relative to a 32px portrait, so 48px art renders at the same size with finer pixels. */
 export function Portrait({ role, scale = 4, className, style }) {
-  return <PixelSprite portrait={role} scale={scale} className={className} style={style} />;
+  const w = PORTRAITS[role]?.[0]?.length || 32;
+  return <PixelSprite portrait={role} scale={(scale * 32) / w} className={className} style={style} />;
 }
 
 export function SeatToken({ seat, scale = 3 }) {
