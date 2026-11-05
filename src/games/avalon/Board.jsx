@@ -179,7 +179,7 @@ function ActionPanel({ g, myId, myRole, isHost, amLeader, amLady, leader, act, t
         <p>在圆桌上点选 <b>{size}</b> 名骑士去执行任务 {g.quest + 1}（可以选自己）。</p>
         <div className="fs-12 c-dim mt-2 mb-4">已选：<WhoList ids={g.team} /></div>
         <button className="px-btn gold lg block" disabled={busy || g.team.length !== size} data-testid="submit-team"
-          onClick={() => guarded({ title: `提交任务 ${g.quest + 1} 的队伍`, body: <><div className="mb-2">队员：</div><WhoList ids={g.team} size="lg" /><div className="fs-12 c-dim mt-3">提交后所有人开始投票，不能再换人。</div></>, ok: '提交' }, x => submitTeam(x, myId))}>
+          onClick={() => act(x => submitTeam(x, myId))}>
           提交队伍 {g.team.length}/{size}
         </button>
       </> : <>
@@ -218,9 +218,9 @@ function ActionPanel({ g, myId, myRole, isHost, amLeader, amLady, leader, act, t
         <p className="mb-4">只有你知道自己出了什么。{good ? '好人只能出「成功」。' : '你是坏人，可以选择破坏。'}</p>
         <div className="grid grid-cols-2">
           <button className="px-btn blue lg" disabled={busy} data-testid="card-success"
-            onClick={() => guarded({ title: '出「成功」牌？', body: '出牌后不能更改。', ok: '出成功' }, x => playCard(x, myId, true))}>成功</button>
+            onClick={() => act(x => playCard(x, myId, true))}>成功</button>
           <button className="px-btn red lg" disabled={busy || good} data-testid="card-fail"
-            onClick={() => guarded({ title: '出「失败」牌？', body: '你要破坏这次任务。出牌后不能更改。', ok: '出失败', tone: 'danger' }, x => playCard(x, myId, false))}>失败</button>
+            onClick={() => act(x => playCard(x, myId, false))}>失败</button>
         </div>
       </>;
     }

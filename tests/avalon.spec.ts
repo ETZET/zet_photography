@@ -191,8 +191,7 @@ test('full Avalon game across five tabs', async ({ browser }) => {
       for (const id of team) await lp.getByTestId(`seat-${nameOf(id)}`).click();
       await once('propose', lp, 'propose-leader-view');
       await once('propose-mobile', mobile, 'propose-mobile');
-      await confirmClick(lp, 'submit-team', shotsTaken.has('submit') ? undefined : 'submit-confirm');
-      shotsTaken.add('submit');
+      await lp.getByTestId('submit-team').click();
     } else if (g.step === 'vote') {
       // Reject the very first proposal to exercise the rejection path.
       const approve = !(g.quest === 0 && g.attempt === 1);
@@ -210,7 +209,8 @@ test('full Avalon game across five tabs', async ({ browser }) => {
         await once(`quest-${evil ? 'evil' : 'good'}`, p, `quest-card-${evil ? 'evil' : 'good'}`);
         // sabotage exactly quest 2 so the game reaches the assassin phase
         const fail = evil && g.quest === 1;
-        await confirmClick(p, fail ? 'card-fail' : 'card-success', fail ? 'fail-confirm' : undefined);
+        await p.getByTestId(fail ? 'card-fail' : 'card-success').click();
+        await expect(p.getByTestId('confirm')).toHaveCount(0);
       }
       await host.waitForTimeout(2600); // card-by-card reveal animation
       await once(`reveal-${g.quest}`, host, `quest-result-${g.quest + 1}`);
