@@ -1,7 +1,7 @@
 // Dev-only bots so one person can play through locally. Host tab drives them.
 import { useEffect } from 'react';
 import {
-  MAX_PLAYERS, activeCard, alivePlayers, isWolfCamp, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
+  MAX_PLAYERS, activeCard, alivePlayers, isWolfCamp, isNightWolf, voters, canSelfSave, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
   hunterShoot, castVote,
 } from './wolfRules';
 
@@ -36,19 +36,20 @@ export function botStep(room) {
     }
     case 'night': {
       const b = g.seats.find(id => isBot(id) && (
-        (role(id) === 'guard' && !g.acts.guard) || (role(id) === 'wolf' && !(id in g.acts.wolves)) || (role(id) === 'seer' && !g.acts.seer)));
+        (role(id) === 'guard' && !g.acts.guard) || (isNightWolf(g, id) && !(id in g.acts.wolves)) || (role(id) === 'seer' && !g.acts.seer)));
       if (!b) return false;
-      if (role(b) === 'guard') guardAct(g, b, pick(alivePlayers(g).filter(x => x !== g.guardLast)));
-      else if (role(b) === 'wolf') {
+      if (role(b) === 'guard' && !g.acts.guard) guardAct(g, b, pick(alivePlayers(g).filter(x => x !== g.guardLast)));
+      else if (role(b) === 'seer' && !g.acts.seer) seerAct(g, b, pick(others(b)));
+      else {
         const prey = alivePlayers(g).filter(x => !isWolfCamp(g, x));
         wolfAct(g, b, pick(prey.length ? prey : others(b)));
-      } else seerAct(g, b, pick(others(b)));
+      }
       return true;
     }
     case 'witch': {
       const b = g.seats.find(id => isBot(id) && role(id) === 'witch');
       if (!b) return false;
-      if (g.potions.save && g.acts.kill && g.acts.kill !== b && Math.random() < 0.5) witchAct(g, b, { save: true });
+      if (g.potions.save && g.acts.kill && (g.acts.kill !== b || canSelfSave(g)) && Math.random() < 0.5) witchAct(g, b, { save: true });
       else if (g.potions.poison && Math.random() < 0.2) witchAct(g, b, { poison: pick(others(b)) });
       else witchAct(g, b, {});
       return true;
@@ -59,7 +60,7 @@ export function botStep(room) {
       return true;
     }
     case 'vote': {
-      const b = alivePlayers(g).find(id => isBot(id) && !(id in g.votes));
+      const b = voters(g).find(id => isBot(id) && !(id in g.votes));
       if (!b) return false;
       castVote(g, b, Math.random() < 0.1 ? null : pick(others(b)));
       return true;

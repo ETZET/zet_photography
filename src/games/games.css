@@ -313,3 +313,8 @@
 @keyframes px-rise { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (max-width: 640px) { .px-rcard { min-width: 104px; padding: 8px 8px 10px; } }
 @media (prefers-reduced-motion: reduce) { .px-night, .px-rcard, .px-rcard-x, .px-zzz span, .px-rise { animation: none !important; } }
+.px-seg { display: flex; gap: 6px; }
+.px-seg button { flex: 1; padding: 6px 4px 7px; font-size: 12px; background: var(--panel-lo); color: var(--mute); border: none; cursor: pointer;
+  box-shadow: 0 -3px 0 0 var(--line), 0 3px 0 0 var(--line), -3px 0 0 0 var(--line), 3px 0 0 0 var(--line); margin: 3px; }
+.px-seg button.on { background: #4a3a12; color: var(--ink); box-shadow: 0 -3px 0 0 var(--line), 0 3px 0 0 var(--line), -3px 0 0 0 var(--line), 3px 0 0 0 var(--line), inset 0 0 0 3px var(--gold); animation: px-pop 0.2s steps(2) both; }
+.px-seg button:disabled { cursor: default; }

@@ -5,6 +5,7 @@ import { IS_LOCAL } from '../avalon/roomStore';
 import { Who, useConfirm } from '../avalon/ui';
 import {
   ROLES, ROLE_BLURB, GODS, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildDeck, effectiveConfig, newGame,
+  VARIANTS, DEFAULT_RULES, changedRules,
 } from './wolfRules';
 import { addBot } from './bots';
 
@@ -92,7 +93,7 @@ export default function Lobby({ room, myId, update, busy }) {
             {cfg.auto
               ? <span className="px-tag" data-testid="auto-tag">★ {tableN} 人推荐</span>
               : isHost && (
-                <button className="px-btn dark sm" data-testid="use-recommended" onClick={() => update(r => { r.config = { order: r.config.order, auto: true }; return r; })}>
+                <button className="px-btn dark sm" data-testid="use-recommended" onClick={() => update(r => { r.config = { rules: r.config.rules, auto: true }; return r; })}>
                   恢复 {tableN} 人推荐
                 </button>
               )}
@@ -127,22 +128,13 @@ export default function Lobby({ room, myId, update, busy }) {
           )}
           {deck.error && <div className="px-tag evil fs-12 mt-3">{deck.error}</div>}
 
-          <div className="px-divider" />
-          <div className="fs-12 c-dim mb-2">牌的顺序</div>
-          <div className="grid grid-cols-2">
-            {[['choose', '自己排', '看完两张牌，自己决定哪张先用'], ['random', '随机', '发到手就定了，不能调换']].map(([k, label, hint]) => (
-              <button key={k} className={`px-role row good ${cfg.order === k ? 'on' : ''}`} disabled={!isHost} data-testid={`order-${k}`}
-                onClick={() => update(r => { r.config = { ...r.config, order: k }; return r; })}>
-                <span className="flex flex-col gap-1"><span>{label}</span><span className="fs-12 c-dim">{hint}</span></span>
-              </button>
-            ))}
-          </div>
-
           <button className="underline fs-12 c-dim mt-3" onClick={() => setShowRules(v => !v)} data-testid="toggle-rules">
             {showRules ? '收起规则' : '查看双身份规则 / 各人数推荐'}
           </button>
-          {showRules && <RuleCard tableN={tableN} />}
+          {showRules && <RuleCard tableN={tableN} rules={cfg.rules} />}
         </div>
+
+        <VariantPanel rules={cfg.rules} isHost={isHost} update={update} />
 
         {isHost ? (
           <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!deck.error} onClick={start} data-testid="start-game">
@@ -156,14 +148,18 @@ export default function Lobby({ room, myId, update, busy }) {
   );
 }
 
-export function RuleCard({ tableN }) {
+export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
+  const camp = rules.seer === 'camp';
   return (
     <div className="fs-12 leading-relaxed mt-3 flex flex-col gap-2" data-testid="rule-card">
-      <p><span className="c-gold">两张牌 = 两条命。</span>上面那张是你当前的身份，它出局后下面那张才生效。</p>
-      <p><span className="c-evil">有一张狼牌就是狼人阵营。</span>只有翻在上面的狼牌晚上能睁眼刀人。</p>
-      <p>预言家只能验到对方<span className="c-gold">当前那张牌</span>。出局只公布少了一条命，不亮牌。</p>
-      <p>好人：所有狼牌出局。狼人：屠边，好人阵营的村民牌全灭，或神牌全灭。</p>
-      <p className="c-dim">没有警长；平票无人出局；女巫不能自救、一晚只能用一瓶；守卫不能连守，同守同救会死。</p>
+      <p><span className="c-gold">两张牌 = 两条命。</span>上面那张是你当前的身份，它出局后下面那张才生效。{rules.order === 'random' ? '本局顺序随机，不能调换。' : '发牌后自己排顺序。'}</p>
+      <p><span className="c-evil">有一张狼牌就是狼人阵营。</span>{rules.wake === 'all' ? '狼牌不管在上面还是下面，晚上都睁眼刀人。' : '只有翻在上面的狼牌晚上能睁眼刀人。'}</p>
+      <p>预言家验到的是{camp ? <span className="c-gold">阵营</span> : <span className="c-gold">当前那张牌</span>}。{rules.reveal === 'show' ? '失去一条命时亮出那张牌。' : '出局只公布少了一条命，不亮牌。'}</p>
+      <p>好人：所有狼牌出局。狼人：{rules.win === 'city' ? '屠城，好人阵营全部出局。' : '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
+      <p className="c-dim">
+        没有警长；平票无人出局；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
+        守卫不能连守，同守同救{rules.guardSave === 'dies' ? '会死' : '不死'}{rules.mute === 'yes' ? '；夜里失去第一条命的人当天不能投票' : ''}。
+      </p>
       <table className="w-full border-collapse mt-1">
         <tbody>
           {Object.entries(RECOMMENDED).map(([k, cfg]) => {
@@ -177,6 +173,40 @@ export function RuleCard({ tableN }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function VariantPanel({ rules, isHost, update }) {
+  const changed = changedRules(rules).length;
+  const set = (key, val) => isHost && update(r => { r.config = { ...r.config, rules: { ...DEFAULT_RULES, ...(r.config.rules || {}), [key]: val } }; delete r.config.order; return r; });
+  return (
+    <div className="px-frame pad" data-testid="variants">
+      <div className="flex items-center justify-between mb-3">
+        <div className="px-title !mb-0">规则变体</div>
+        {changed > 0
+          ? isHost && <button className="px-btn dark sm" onClick={() => update(r => { r.config = { ...r.config, rules: { ...DEFAULT_RULES } }; delete r.config.order; return r; })} data-testid="reset-rules">恢复常用规则</button>
+          : <span className="px-tag">★ 常用规则</span>}
+      </div>
+      <p className="fs-12 c-dim mb-3">双身份玩法各地不一样，{isHost ? '开局前和大家商量好再选。' : '由房主设置。'}</p>
+      <div className="flex flex-col gap-3">
+        {VARIANTS.map(v => {
+          const cur = v.opts.find(o => o[0] === rules[v.key]) || v.opts[0];
+          return (
+            <div key={v.key}>
+              <div className="fs-12 mb-1 flex justify-between gap-2"><span>{v.zh}</span><span className="c-mute text-right">{cur[2]}</span></div>
+              <div className="px-seg" role="radiogroup" aria-label={v.zh}>
+                {v.opts.map(([val, label], i) => (
+                  <button key={val} role="radio" aria-checked={rules[v.key] === val} disabled={!isHost}
+                    className={rules[v.key] === val ? 'on' : ''} onClick={() => set(v.key, val)} data-testid={`rule-${v.key}-${val}`}>
+                    {label}{i === 0 && <span className="c-mute"> ★</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

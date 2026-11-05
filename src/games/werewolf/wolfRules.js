@@ -45,12 +45,31 @@ export const RECOMMENDED = {
   10: { wolves: 4, gods: GODS },
 };
 
+// --------------------------------------------------------- variants ---
+// House rules differ a lot between groups, so the host picks. First option = default.
+export const VARIANTS = [
+  { key: 'order', zh: '牌的顺序', opts: [['choose', '自己排', '看完两张牌，自己决定哪张先用'], ['random', '随机', '发到手就定了，不能调换']] },
+  { key: 'wake', zh: '夜里睁眼的狼', opts: [['top', '只有上面的狼牌', '狼牌压在下面时，第一条命没了才睁眼'], ['all', '所有狼牌', '狼牌在下面也睁眼刀人（隐狼）']] },
+  { key: 'seer', zh: '预言家验到', opts: [['card', '当前那张牌', '对方上面那张牌是好是狼'], ['camp', '阵营', '对方手里还有狼牌就显示狼人']] },
+  { key: 'doubleWolf', zh: '一人两张狼牌', opts: [['no', '不会发到', '狼牌分散给不同的人'], ['yes', '可能发到', '纯随机发牌，可能出现双狼']] },
+  { key: 'selfSave', zh: '女巫自救', opts: [['never', '不能', ''], ['first', '仅首夜', ''], ['always', '可以', '']] },
+  { key: 'guardSave', zh: '同守同救', opts: [['dies', '会死', '守卫和女巫救同一人，奶穿'], ['lives', '不死', '']] },
+  { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
+  { key: 'mute', zh: '夜里失去第一条命', opts: [['no', '照常投票', ''], ['yes', '当天不能投票', '第二天恢复']] },
+  { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['city', '屠城', '好人阵营全部出局']] },
+];
+export const DEFAULT_RULES = Object.fromEntries(VARIANTS.map(v => [v.key, v.opts[0][0]]));
+export const rulesOf = cfg => ({ ...DEFAULT_RULES, ...(cfg?.rules || {}), ...(cfg?.order ? { order: cfg.order } : {}) });
+export const changedRules = rules => VARIANTS.filter(v => rules[v.key] !== v.opts[0][0])
+  .map(v => ({ key: v.key, zh: v.zh, val: v.opts.find(o => o[0] === rules[v.key])?.[1] }));
+
 const clampN = n => Math.min(Math.max(n, MIN_PLAYERS), MAX_PLAYERS);
-export const defaultConfig = () => ({ auto: true, order: 'choose' });
+export const defaultConfig = () => ({ auto: true, rules: { ...DEFAULT_RULES } });
 export function effectiveConfig(n, cfg = {}) {
+  const rules = rulesOf(cfg);
   const rec = RECOMMENDED[clampN(n)];
-  if (cfg.auto !== false || cfg.wolves == null) return { ...rec, auto: true, order: cfg.order || 'choose' };
-  return { wolves: cfg.wolves, gods: cfg.gods || [], auto: false, order: cfg.order || 'choose' };
+  if (cfg.auto !== false || cfg.wolves == null) return { ...rec, auto: true, rules, order: rules.order };
+  return { wolves: cfg.wolves, gods: cfg.gods || [], auto: false, rules, order: rules.order };
 }
 
 export function buildDeck(n, cfg) {
@@ -71,6 +90,7 @@ const shuffle = arr => {
 };
 
 export function newGame(players, cfg) {
+  const rules = cfg.rules || rulesOf(cfg);
   const seats = shuffle(players.map(p => p.id));
   const n = seats.length;
   const deck = buildDeck(n, cfg);
@@ -82,19 +102,19 @@ export function newGame(players, cfg) {
     cards = shuffle(deck.cards);
     const wolvesOf = i => (cards[2 * i] === 'wolf') + (cards[2 * i + 1] === 'wolf');
     const goodPlayers = seats.filter((_, i) => wolvesOf(i) === 0);
-    if (goodPlayers.length >= 2 && seats.every((_, i) => wolvesOf(i) < 2)) break;
+    if (goodPlayers.length >= 2 && (rules.doubleWolf === 'yes' || seats.every((_, i) => wolvesOf(i) < 2))) break;
   }
   const hands = {};
   const dead = {};
   seats.forEach((id, i) => {
     const pair = [cards[2 * i], cards[2 * i + 1]];
     // random order mode: deal as-is; choose mode: wolves default to wolf on top
-    hands[id] = { cards: pair, locked: cfg.order === 'random' };
+    hands[id] = { cards: pair, locked: rules.order === 'random' };
     dead[id] = 0;
   });
   const g = {
     seats, hands, dead,
-    order: cfg.order,
+    rules,
     step: 'arrange',
     night: 0,
     day: 0,
@@ -109,7 +129,7 @@ export function newGame(players, cfg) {
     winner: null,
   };
   g.goodGodsAtStart = goodCampCards(g).gods;
-  if (cfg.order === 'random') startNight(g);
+  if (rules.order === 'random') startNight(g);
   return g;
 }
 
@@ -120,7 +140,14 @@ export const activeCard = (g, id) => (isAlive(g, id) ? g.hands[id].cards[g.dead[
 export const isWolfCamp = (g, id) => g.hands[id].cards.includes('wolf');
 export const alivePlayers = g => g.seats.filter(id => isAlive(g, id));
 export const holders = (g, role) => g.seats.filter(id => activeCard(g, id) === role);
-export const activeWolves = g => holders(g, 'wolf');
+const R = g => g.rules || DEFAULT_RULES;
+const hasLiveWolf = (g, id) => isAlive(g, id) && g.hands[id].cards.slice(g.dead[id]).includes('wolf');
+/** Wolves that wake tonight: face-up wolf cards, or (隐狼 variant) any live wolf card. */
+export const isNightWolf = (g, id) => (R(g).wake === 'all' ? hasLiveWolf(g, id) : activeCard(g, id) === 'wolf');
+export const activeWolves = g => g.seats.filter(id => isNightWolf(g, id));
+/** Players who lost their first life last night and must sit out today's vote (variant). */
+export const isMuted = (g, id) => R(g).mute === 'yes' && g.step === 'vote' && (g.muted || []).includes(id);
+export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id));
 
 function goodCampCards(g) {
   let villagers = 0;
@@ -201,7 +228,7 @@ export function guardAct(g, id, target) {
 }
 
 export function wolfAct(g, id, target) {
-  must(g.step === 'night' && activeCard(g, id) === 'wolf', '现在不能刀人');
+  must(g.step === 'night' && isNightWolf(g, id), '现在不能刀人');
   must(isAlive(g, target), '他已经出局了');
   g.acts.wolves[id] = target;
   advanceNight(g);
@@ -211,7 +238,8 @@ export function seerAct(g, id, target) {
   must(g.step === 'night' && activeCard(g, id) === 'seer', '现在不能查验');
   must(target !== id && isAlive(g, target), '选一个还在场的其他人');
   g.acts.seer = target;
-  g.seerLog.push({ night: g.night, from: id, to: target, wolf: activeCard(g, target) === 'wolf' });
+  const wolf = R(g).seer === 'camp' ? hasLiveWolf(g, target) : activeCard(g, target) === 'wolf';
+  g.seerLog.push({ night: g.night, from: id, to: target, wolf });
   advanceNight(g);
 }
 
@@ -220,7 +248,8 @@ export function witchAct(g, id, { save = false, poison = null } = {}) {
   must(!(save && poison), '同一晚只能用一瓶药');
   if (save) {
     must(g.potions.save, '解药已经用过了');
-    must(g.acts.kill && g.acts.kill !== id, '女巫不能自救');
+    must(g.acts.kill, '今晚没有人被刀');
+    if (g.acts.kill === id) must(canSelfSave(g), R(g).selfSave === 'first' ? '女巫只有第一晚能自救' : '女巫不能自救');
   }
   if (poison) {
     must(g.potions.poison, '毒药已经用过了');
@@ -231,6 +260,8 @@ export function witchAct(g, id, { save = false, poison = null } = {}) {
   g.acts.witchDone = true;
   resolveNight(g);
 }
+
+export const canSelfSave = g => R(g).selfSave === 'always' || (R(g).selfSave === 'first' && g.night === 1);
 
 function loseLife(g, id, cause, when) {
   if (!isAlive(g, id)) return null;
@@ -247,11 +278,13 @@ function resolveNight(g) {
   const lost = [];
   if (a.kill) {
     const guarded = a.guard === a.kill;
-    const dies = guarded === a.save; // 同守同救 dies; neither → dies
-    if (dies) { loseLife(g, a.kill, 'wolf', when); lost.push(a.kill); }
+    const dies = guarded && a.save ? R(g).guardSave === 'dies' : !guarded && !a.save; // 同守同救
+    if (dies) lost.push({ id: a.kill, card: loseLife(g, a.kill, 'wolf', when) });
   }
   if (a.save) g.potions.save = false;
-  if (a.poison) { g.potions.poison = false; loseLife(g, a.poison, 'poison', when); lost.push(a.poison); }
+  if (a.poison) { g.potions.poison = false; lost.push({ id: a.poison, card: loseLife(g, a.poison, 'poison', when) }); }
+  g.muted = lost.map(l => l.id).filter(id => g.dead[id] === 1);
+  if (R(g).reveal !== 'show') lost.forEach(l => { delete l.card; });
   g.guardLast = a.guard || null;
   g.day = g.night;
   g.log.push({ type: 'night', night: g.night, lost });
@@ -264,11 +297,12 @@ function resolveNight(g) {
 // ------------------------------------------------------------------ day ---
 export function hunterShoot(g, id, target) {
   must(g.step === 'hunter' && g.hunter?.id === id, '现在不能开枪');
+  let card = null;
   if (target) {
     must(target !== id && isAlive(g, target), '选一个还在场的其他人');
-    loseLife(g, target, 'shot', { day: g.day });
+    card = loseLife(g, target, 'shot', { day: g.day });
   }
-  g.log.push({ type: 'shot', day: g.day, from: id, to: target || null });
+  g.log.push({ type: 'shot', day: g.day, from: id, to: target || null, card: R(g).reveal === 'show' ? card : undefined });
   const then = g.hunter.then;
   g.hunter = null;
   if (checkWin(g)) return;
@@ -280,23 +314,28 @@ export function startVote(g) {
   must(g.step === 'day', '现在不能投票');
   g.step = 'vote';
   g.votes = {};
+  if (!voters(g).length) { // everyone left is muted today
+    g.log.push({ type: 'vote', day: g.day, votes: {}, out: null, tie: false });
+    startNight(g);
+  }
 }
 
 /** target = player id, or null to abstain. Voting closes when everyone alive has voted. */
 export function castVote(g, id, target) {
   must(g.step === 'vote' && isAlive(g, id), '你现在不能投票');
+  must(!isMuted(g, id), '你昨晚失去了第一条命，今天不能投票');
   must(target === null || isAlive(g, target), '他已经出局了');
   g.votes[id] = target;
-  const voters = alivePlayers(g);
-  if (!voters.every(v => v in g.votes)) return;
+  const vs = voters(g);
+  if (!vs.every(v => v in g.votes)) return;
 
   const tally = {};
-  voters.forEach(v => { const t = g.votes[v]; if (t) tally[t] = (tally[t] || 0) + 1; });
+  vs.forEach(v => { const t = g.votes[v]; if (t) tally[t] = (tally[t] || 0) + 1; });
   const best = Math.max(0, ...Object.values(tally));
   const top = Object.keys(tally).filter(t => tally[t] === best);
   const out = best > 0 && top.length === 1 ? top[0] : null;
-  if (out) loseLife(g, out, 'vote', { day: g.day });
-  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie: best > 0 && top.length > 1 });
+  const card = out ? loseLife(g, out, 'vote', { day: g.day }) : null;
+  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie: best > 0 && top.length > 1, card: R(g).reveal === 'show' ? card : undefined });
   if (checkWin(g)) return;
   if (g.hunter) { g.hunter.then = 'night'; g.step = 'hunter'; return; }
   startNight(g);
@@ -308,6 +347,7 @@ function checkWin(g) {
   let winner = null;
   let reason = '';
   if (s.wolves === 0) { winner = 'good'; reason = '所有狼牌都出局了'; }
+  else if (R(g).win === 'city') { if (s.villagers + s.gods === 0) { winner = 'wolf'; reason = '屠城：好人阵营全部出局'; } }
   else if (s.villagers === 0) { winner = 'wolf'; reason = '屠边：好人阵营的村民牌全部出局'; }
   else if (g.goodGodsAtStart > 0 && s.gods === 0) { winner = 'wolf'; reason = '屠边：好人阵营的神牌全部出局'; }
   if (!winner) return false;

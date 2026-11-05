@@ -21,6 +21,7 @@ type G = {
   hands: Record<string, { cards: string[]; locked: boolean }>; dead: Record<string, number>;
   acts: { guard: string | null; wolves: Record<string, string>; seer: string | null; kill: string | null };
   potions: { save: boolean; poison: boolean }; guardLast: string | null; votes: Record<string, string | null>;
+  rules: Record<string, string>; muted?: string[];
   hunter: { id: string } | null; winner: string | null; seerLog: { from: string; night: number }[];
 };
 
@@ -65,6 +66,9 @@ async function dismiss(page: Page) {
 const active = (g: G, id: string) => (g.dead[id] < 2 ? g.hands[id].cards[g.dead[id]] : null);
 const alive = (g: G) => g.seats.filter(id => g.dead[id] < 2);
 const wolfCamp = (g: G, id: string) => g.hands[id].cards.includes('wolf');
+const nightWolf = (g: G, id: string) => (g.rules.wake === 'all'
+  ? g.dead[id] < 2 && g.hands[id].cards.slice(g.dead[id]).includes('wolf') : active(g, id) === 'wolf');
+const voters = (g: G) => alive(g).filter(id => !(g.rules.mute === 'yes' && (g.muted || []).includes(id)));
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
 test('双身份狼人 full game on phones', async ({ browser }) => {
@@ -99,6 +103,13 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   await host.getByTestId('toggle-rules').click();
   await expect(host.getByTestId('rule-card')).toBeVisible();
   await snap(host, 'lobby-rules');
+  // host picks a few house-rule variants; every phone must see them
+  for (const id of ['rule-wake-all', 'rule-reveal-show', 'rule-mute-yes', 'rule-selfSave-first']) await host.getByTestId(id).click();
+  await settle(pages);
+  await expect(pages[3].getByTestId('rule-wake-all')).toHaveAttribute('aria-checked', 'true');
+  await expect(host.getByTestId('rule-card')).toContainText('晚上都睁眼');
+  await host.getByTestId('variants').scrollIntoViewIfNeeded();
+  await snap(host, 'lobby-variants');
   await host.getByTestId('start-game').click();
   await settle(pages);
 
@@ -129,7 +140,7 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
     if (g.step !== 'day' && g.step !== 'hunter') await Promise.all(pages.map(dismiss));
 
     if (g.step === 'night') {
-      const sleeper = alive(g).find(id => !['wolf', 'guard', 'seer'].includes(active(g, id)!));
+      const sleeper = alive(g).find(id => !nightWolf(g, id) && !['guard', 'seer'].includes(active(g, id)!));
       if (sleeper) await snap(pageOf(sleeper), 'night-sleeping');
       const guardId = alive(g).find(id => active(g, id) === 'guard' && !g.acts.guard);
       if (guardId) {
@@ -148,7 +159,7 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
         await snap(p, 'night-seer-result');
         await p.getByTestId('close-seer').click();
       }
-      const wolves = alive(g).filter(id => active(g, id) === 'wolf' && !(id in g.acts.wolves));
+      const wolves = alive(g).filter(id => nightWolf(g, id) && !(id in g.acts.wolves));
       const prey = pick(alive(g).filter(id => !wolfCamp(g, id)));
       for (const [i, w] of wolves.entries()) {
         const p = pageOf(w);
@@ -205,8 +216,8 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
     if (g.step === 'vote') {
       // the village gangs up on someone in the wolf camp so the game moves along
       const suspect = pick(alive(g).filter(id => wolfCamp(g, id)));
-      const voters = alive(g);
-      for (const [i, v] of voters.entries()) {
+      await expect(host.getByTestId('house-rules')).toBeVisible();
+      for (const [i, v] of voters(g).entries()) {
         const p = pageOf(v);
         await dismiss(p);
         const t = v === suspect ? pick(alive(g).filter(x => x !== v)) : suspect;
