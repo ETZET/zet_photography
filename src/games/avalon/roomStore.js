@@ -10,7 +10,8 @@
 
 import { generateClient } from 'aws-amplify/data';
 
-const ROOM_TTL_S = 24 * 60 * 60;
+// Rooms expire 3 days after their last write; DynamoDB TTL then deletes the row.
+const ROOM_TTL_S = 3 * 24 * 60 * 60;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I / O
 
 function randomCode() {
@@ -106,8 +107,11 @@ async function call(query, variables) {
   }
 }
 
+// DynamoDB TTL deletes lazily (can lag up to ~48h), so treat expired rows as gone.
+const expired = row => typeof row.ttl === 'number' && row.ttl * 1000 < Date.now();
+
 const parse = row => {
-  if (!row) return null;
+  if (!row || expired(row)) return null;
   const state = typeof row.state === 'string' ? JSON.parse(row.state) : row.state;
   return { ...state, code: row.code, version: row.version };
 };
