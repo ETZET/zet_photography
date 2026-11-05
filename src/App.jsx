@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Instagram, Mail, LogOut, Settings } from 'lucide-react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import ScrollableGallery from './components/ScrollableGallery';
@@ -6,6 +6,8 @@ import PhotoViewer from './components/PhotoViewer';
 import AboutPage from './components/AboutPage';
 import LoginPage from './components/LoginPage';
 import GalleryManagement from './components/GalleryManagement';
+// Games are code-split so the photo site doesn't pay for them.
+const GamesPage = lazy(() => import('./games/GamesPage'));
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { initializePhotoSeries } from './data/photoSeries';
 
@@ -30,7 +32,20 @@ const AppContent = () => {
   const [currentSeriesPhotos, setCurrentSeriesPhotos] = useState([]);
   const [photoSeries, setPhotoSeries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState('work'); // 'work', 'about', 'login', or 'manage'
+  // Deep links like ?game=avalon&room=ABCD open the game tab directly.
+  const initialGame = new URLSearchParams(window.location.search).get('game');
+  const [currentPage, setCurrentPage] = useState(initialGame ? 'game' : 'work'); // 'work', 'about', 'game', 'login', or 'manage'
+  const [currentGame, setCurrentGame] = useState(initialGame);
+
+  // Drop game deep-link params once the user leaves the game.
+  useEffect(() => {
+    if (currentPage === 'game' && currentGame) return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('game') && !url.searchParams.has('room')) return;
+    url.searchParams.delete('game');
+    url.searchParams.delete('room');
+    window.history.replaceState(null, '', url);
+  }, [currentPage, currentGame]);
 
   const loadPhotoSeriesData = useCallback(async (forceRefresh = false) => {
     try {
@@ -109,7 +124,8 @@ const AppContent = () => {
     setSelectedPhoto(currentSeriesPhotos[prevIndex]);
   };
 
-  if (loading) {
+  // Only the gallery needs to wait for series data.
+  if (loading && currentPage === 'work') {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse text-2xl">Loading galleries...</div>
@@ -120,14 +136,14 @@ const AppContent = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* Consistent Header for both pages */}
-      <header className="p-6 flex justify-between items-center max-w-7xl mx-auto">
+      <header className="p-6 flex flex-wrap gap-y-3 justify-between items-center max-w-7xl mx-auto">
         <h1 
-          className="text-2xl font-light cursor-pointer" 
+          className="text-xl sm:text-2xl font-light cursor-pointer" 
           onClick={() => setCurrentPage('work')}
         >
           Enting Zhou Photography
         </h1>
-        <nav className="flex gap-8 items-center">
+        <nav className="flex gap-4 sm:gap-8 items-center">
           <button 
             onClick={() => setCurrentPage('work')}
             className={`hover:text-gray-600 transition-colors ${currentPage === 'work' ? 'font-medium' : ''}`}
@@ -139,6 +155,12 @@ const AppContent = () => {
             className={`hover:text-gray-600 transition-colors ${currentPage === 'about' ? 'font-medium' : ''}`}
           >
             ABOUT
+          </button>
+          <button 
+            onClick={() => { setCurrentPage('game'); setCurrentGame(null); }}
+            className={`hover:text-gray-600 transition-colors ${currentPage === 'game' ? 'font-medium' : ''}`}
+          >
+            GAME
           </button>
           {isAuthenticated && (
             <button 
@@ -175,6 +197,10 @@ const AppContent = () => {
           onBack={() => setCurrentPage('about')} 
           onLoginSuccess={() => setCurrentPage('work')}
         />
+      ) : currentPage === 'game' ? (
+        <Suspense fallback={<div className="min-h-[60vh] bg-[#0e0a1c]" />}>
+          <GamesPage gameId={currentGame} onSelectGame={setCurrentGame} />
+        </Suspense>
       ) : currentPage === 'manage' ? (
         <GalleryManagement />
       ) : (

@@ -35,6 +35,23 @@ const schema = a.schema({
       allow.authenticated().to(['create', 'update', 'delete', 'read'])
     ]),
 
+  // Avalon game rooms (GAME tab). No login: friends join with a 4-letter code.
+  // The whole room (players, config, game state) is one JSON blob; `version`
+  // gives optimistic concurrency (updates are conditioned on version = n).
+  // `ttl` (epoch seconds) lets DynamoDB expire abandoned rooms.
+  AvalonRoom: a
+    .model({
+      code: a.id().required(),
+      state: a.json().required(),
+      version: a.integer().required(),
+      ttl: a.integer(),
+    })
+    .identifier(['code'])
+    .authorization((allow) => [
+      allow.guest(),
+      allow.authenticated('identityPool'),
+    ]),
+
   // Note: Thumbnail generation is now handled via CDK Lambda stack
   // The function will be triggered through S3 events or direct invocation
   // rather than through GraphQL mutations

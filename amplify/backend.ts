@@ -14,6 +14,12 @@ const backend = defineBackend({
   storage,
 });
 
+// Expire abandoned Avalon rooms via DynamoDB TTL on the `ttl` attribute.
+backend.data.resources.cfnResources.amplifyDynamoDbTables['AvalonRoom'].timeToLiveAttribute = {
+  attributeName: 'ttl',
+  enabled: true,
+};
+
 // Add the ThumbnailGenerator custom Lambda stack to the backend
 const thumbnailStack = new ThumbnailGeneratorStack(
   backend.createStack('ThumbnailGeneratorStack'),
