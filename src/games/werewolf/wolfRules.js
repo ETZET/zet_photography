@@ -1,6 +1,8 @@
 // 双身份狼人 (dual-identity Werewolf) rules engine. Pure functions that
 // mutate a plain JSON game object; the room store syncs it to every phone.
 //
+import { BALANCE_TABLE } from './balanceTable.js';
+
 // Rules (the common house variant, see the lobby rule card):
 //  - Every player gets TWO cards and puts them in order (top first, bottom
 //    second). Two cards = two lives; the top card is your identity until it
@@ -26,6 +28,8 @@ export const ROLES = {
 };
 export const GODS = ['seer', 'witch', 'hunter', 'guard'];
 
+export const JGL_BLURB = '金刚狼：两张牌都是狼。整局一次，可以一刀砍掉一个人的两条命，守卫和女巫的解药都挡不住。有一张狼牌出局后就不能再用。';
+
 export const ROLE_BLURB = {
   wolf: '这张牌在上面时，每晚和狼队友一起刀掉一个人的一条命。手里只要有一张狼牌，你就是狼人阵营。',
   villager: '没有技能。白天靠发言和投票找出狼人。',
@@ -36,13 +40,14 @@ export const ROLE_BLURB = {
 };
 
 // 2 cards per player → 2n cards. Villagers fill whatever is left.
+// Fallback only; the live recommendation comes from balanceTable.js (same numbers for standard rules).
 export const RECOMMENDED = {
-  5: { wolves: 2, gods: ['seer', 'witch', 'hunter'] },
-  6: { wolves: 2, gods: GODS },
-  7: { wolves: 3, gods: GODS },
+  5: { wolves: 2, gods: GODS },
+  6: { wolves: 2, gods: ['seer', 'witch', 'hunter'] },
+  7: { wolves: 2, gods: ['seer', 'witch'] },
   8: { wolves: 3, gods: GODS },
-  9: { wolves: 4, gods: GODS },
-  10: { wolves: 4, gods: GODS },
+  9: { wolves: 2, gods: ['seer', 'witch'] },
+  10: { wolves: 3, gods: ['seer', 'witch', 'hunter'] },
 };
 
 // --------------------------------------------------------- variants ---
@@ -51,7 +56,7 @@ export const VARIANTS = [
   { key: 'order', zh: '牌的顺序', opts: [['choose', '自己排', '看完两张牌，自己决定哪张先用'], ['random', '随机', '发到手就定了，不能调换']] },
   { key: 'wake', zh: '夜里睁眼的狼', opts: [['top', '只有上面的狼牌', '狼牌压在下面时，第一条命没了才睁眼'], ['all', '所有狼牌', '狼牌在下面也睁眼刀人（隐狼）']] },
   { key: 'seer', zh: '预言家验到', opts: [['card', '当前那张牌', '对方上面那张牌是好是狼'], ['camp', '阵营', '对方手里还有狼牌就显示狼人']] },
-  { key: 'doubleWolf', zh: '一人两张狼牌', opts: [['no', '不会发到', '狼牌分散给不同的人'], ['yes', '可能发到', '纯随机发牌，可能出现双狼']] },
+  { key: 'doubleWolf', zh: '金刚狼（一人两张狼牌）', opts: [['no', '不会发到', '狼牌分散给不同的人'], ['maybe', '随机', '可能发到；拿到的人有金刚狼技能'], ['force', '必有一个', '保证有一人拿两张狼牌']] },
   { key: 'selfSave', zh: '女巫自救', opts: [['never', '不能', ''], ['first', '仅首夜', ''], ['always', '可以', '']] },
   { key: 'guardSave', zh: '同守同救', opts: [['dies', '会死', '守卫和女巫救同一人，奶穿'], ['lives', '不死', '']] },
   { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
@@ -63,11 +68,36 @@ export const rulesOf = cfg => ({ ...DEFAULT_RULES, ...(cfg?.rules || {}), ...(cf
 export const changedRules = rules => VARIANTS.filter(v => rules[v.key] !== v.opts[0][0])
   .map(v => ({ key: v.key, zh: v.zh, val: v.opts.find(o => o[0] === rules[v.key])?.[1] }));
 
+// Common setups the host picks from; DIY lives behind a collapsible editor.
+export const PRESETS = [
+  { id: 'standard', zh: '标准双身份', desc: '自己排牌，只有翻在上面的狼牌睁眼，屠边。最常见的玩法。', rules: {} },
+  { id: 'random', zh: '随机牌序', desc: '发到手顺序就定了，不能调换（开心狼人杀的双身份就是这样）。', rules: { order: 'random' } },
+  { id: 'hidden', zh: '隐狼局', desc: '狼牌压在下面也睁眼刀人，狼可以把另一张放上面伪装。', rules: { wake: 'all' } },
+  { id: 'jgl', zh: '金刚狼局', desc: '保证有一人拿两张狼牌，整局一次可以一刀砍两条命。', rules: { doubleWolf: 'force' } },
+  { id: 'mute', zh: '一死禁票', desc: '夜里失去第一条命的人当天不能投票；出局亮牌。', rules: { mute: 'yes', reveal: 'show' } },
+  { id: 'city', zh: '屠城局', desc: '狼人要杀光所有好人才赢，好人更有余地，适合新手多的局。', rules: { win: 'city' } },
+];
+export const presetRules = id => ({ ...DEFAULT_RULES, ...(PRESETS.find(p => p.id === id)?.rules || {}) });
+/** Which preset a room config matches ('custom' if the deck or rules were hand-edited). */
+export function presetOf(cfg = {}) {
+  if (cfg.preset) return cfg.preset;
+  const rules = rulesOf(cfg);
+  if (cfg.auto === false) return 'custom';
+  const hit = PRESETS.find(p => VARIANTS.every(v => presetRules(p.id)[v.key] === rules[v.key]));
+  return hit ? hit.id : 'custom';
+}
+
+// House rules that shift balance a lot; the recommended deck is pre-tuned for each combination.
+export const TUNED_KEYS = ['order', 'wake', 'doubleWolf', 'mute', 'win'];
+export const tableKey = rules => TUNED_KEYS.map(k => rules[k]).join('|');
+/** Pre-computed recommendation + simulated good win rate, or null. */
+export const balanceFor = (n, rules) => BALANCE_TABLE?.[tableKey(rules)]?.[n] || null;
+
 const clampN = n => Math.min(Math.max(n, MIN_PLAYERS), MAX_PLAYERS);
 export const defaultConfig = () => ({ auto: true, rules: { ...DEFAULT_RULES } });
 export function effectiveConfig(n, cfg = {}) {
   const rules = rulesOf(cfg);
-  const rec = RECOMMENDED[clampN(n)];
+  const rec = balanceFor(clampN(n), rules) || RECOMMENDED[clampN(n)];
   if (cfg.auto !== false || cfg.wolves == null) return { ...rec, auto: true, rules, order: rules.order };
   return { wolves: cfg.wolves, gods: cfg.gods || [], auto: false, rules, order: rules.order };
 }
@@ -102,7 +132,9 @@ export function newGame(players, cfg) {
     cards = shuffle(deck.cards);
     const wolvesOf = i => (cards[2 * i] === 'wolf') + (cards[2 * i + 1] === 'wolf');
     const goodPlayers = seats.filter((_, i) => wolvesOf(i) === 0);
-    if (goodPlayers.length >= 2 && (rules.doubleWolf === 'yes' || seats.every((_, i) => wolvesOf(i) < 2))) break;
+    const doubles = seats.filter((_, i) => wolvesOf(i) === 2).length;
+    const dealOk = rules.doubleWolf === 'maybe' || (rules.doubleWolf === 'force' ? doubles === 1 || deck.cards.filter(c => c === 'wolf').length < 2 : doubles === 0);
+    if (goodPlayers.length >= 2 && dealOk) break;
   }
   const hands = {};
   const dead = {};
@@ -127,6 +159,7 @@ export function newGame(players, cfg) {
     votes: {},
     hunter: null,
     winner: null,
+    jglUsed: false,
   };
   g.goodGodsAtStart = goodCampCards(g).gods;
   if (rules.order === 'random') startNight(g);
@@ -147,6 +180,9 @@ export const isNightWolf = (g, id) => (R(g).wake === 'all' ? hasLiveWolf(g, id) 
 export const activeWolves = g => g.seats.filter(id => isNightWolf(g, id));
 /** Players who lost their first life last night and must sit out today's vote (variant). */
 export const isMuted = (g, id) => R(g).mute === 'yes' && g.step === 'vote' && (g.muted || []).includes(id);
+/** 金刚狼: holds two wolf cards, both still alive, skill unused, awake tonight. */
+export const isJgl = (g, id) => g.hands[id].cards.every(c => c === 'wolf');
+export const canDouble = (g, id) => isJgl(g, id) && g.dead[id] === 0 && !g.jglUsed && isNightWolf(g, id);
 export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id));
 
 function goodCampCards(g) {
@@ -183,7 +219,7 @@ export function lockCards(g, id) {
 function startNight(g) {
   g.night += 1;
   g.step = 'night';
-  g.acts = { guard: null, wolves: {}, seer: null, kill: null, save: false, poison: null, witchDone: false };
+  g.acts = { guard: null, wolves: {}, seer: null, kill: null, save: false, poison: null, witchDone: false, double: null, doubleKill: false };
   g.votes = {};
   advanceNight(g);
 }
@@ -203,6 +239,9 @@ const witchCanAct = g => holders(g, 'witch').length > 0 && (g.potions.save || g.
 function advanceNight(g) {
   if (g.step !== 'night' || nightPending(g).length) return;
   g.acts.kill = wolfDecision(g);
+  // 金刚狼's double strike only fires if the pack ends up on the 金刚狼's own pick
+  const d = g.acts.double;
+  g.acts.doubleKill = !!(d && g.acts.kill && g.acts.wolves[d] === g.acts.kill && canDouble(g, d));
   if (witchCanAct(g)) g.step = 'witch';
   else resolveNight(g);
 }
@@ -227,10 +266,13 @@ export function guardAct(g, id, target) {
   advanceNight(g);
 }
 
-export function wolfAct(g, id, target) {
+export function wolfAct(g, id, target, { double = false } = {}) {
   must(g.step === 'night' && isNightWolf(g, id), '现在不能刀人');
   must(isAlive(g, target), '他已经出局了');
+  if (double) must(canDouble(g, id), '现在不能用金刚狼技能');
   g.acts.wolves[id] = target;
+  if (double) g.acts.double = id;
+  else if (g.acts.double === id) g.acts.double = null;
   advanceNight(g);
 }
 
@@ -249,6 +291,7 @@ export function witchAct(g, id, { save = false, poison = null } = {}) {
   if (save) {
     must(g.potions.save, '解药已经用过了');
     must(g.acts.kill, '今晚没有人被刀');
+    must(!g.acts.doubleKill, '金刚狼的一刀救不了');
     if (g.acts.kill === id) must(canSelfSave(g), R(g).selfSave === 'first' ? '女巫只有第一晚能自救' : '女巫不能自救');
   }
   if (poison) {
@@ -276,7 +319,11 @@ function resolveNight(g) {
   const a = g.acts;
   const when = { night: g.night };
   const lost = [];
-  if (a.kill) {
+  if (a.kill && a.doubleKill) {
+    g.jglUsed = true;
+    lost.push({ id: a.kill, card: loseLife(g, a.kill, 'wolf', when) });
+    lost.push({ id: a.kill, card: loseLife(g, a.kill, 'wolf', when) });
+  } else if (a.kill) {
     const guarded = a.guard === a.kill;
     const dies = guarded && a.save ? R(g).guardSave === 'dies' : !guarded && !a.save; // 同守同救
     if (dies) lost.push({ id: a.kill, card: loseLife(g, a.kill, 'wolf', when) });
@@ -287,7 +334,7 @@ function resolveNight(g) {
   if (R(g).reveal !== 'show') lost.forEach(l => { delete l.card; });
   g.guardLast = a.guard || null;
   g.day = g.night;
-  g.log.push({ type: 'night', night: g.night, lost });
+  g.log.push({ type: 'night', night: g.night, lost, double: a.doubleKill || undefined });
   g.lastNight = { night: g.night, lost };
   if (checkWin(g)) return;
   g.step = g.hunter ? 'hunter' : 'day';

@@ -100,17 +100,36 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   await settle(pages);
   await expect(host.getByTestId('deck')).toContainText('狼人×2');
   await snap(host, 'lobby');
+  // common setups list, each with its simulated balance
+  await expect(host.getByTestId('preset-standard')).toHaveAttribute('aria-pressed', 'true');
+  await host.getByTestId('presets').scrollIntoViewIfNeeded();
+  await snap(host, 'lobby-presets');
+  await host.getByTestId('preset-jgl').click();
+  await settle(pages);
+  await expect(pages[2].getByTestId('preset-jgl')).toHaveAttribute('aria-pressed', 'true');
   await host.getByTestId('toggle-rules').click();
   await expect(host.getByTestId('rule-card')).toBeVisible();
   await snap(host, 'lobby-rules');
-  // host picks a few house-rule variants; every phone must see them
+
+  // DIY: an absurd deck triggers the balance warning
+  await host.getByTestId('toggle-diy').click();
+  for (let i = 0; i < 3; i++) await host.getByTestId('wolf-plus').click();
+  await settle(pages);
+  await expect(host.getByTestId('balance-warning').first()).toBeVisible();
+  await expect(host.getByTestId('preset-custom')).toBeVisible();
+  await host.getByTestId('diy').scrollIntoViewIfNeeded();
+  await snap(host, 'lobby-diy-warning');
+  await host.getByTestId('reset-rules').click();
+  await settle(pages);
+  await expect(host.getByTestId('preset-standard')).toHaveAttribute('aria-pressed', 'true');
+  // DIY house rules on top of the tuned deck; every phone must see them
   for (const id of ['rule-wake-all', 'rule-reveal-show', 'rule-mute-yes', 'rule-selfSave-first']) await host.getByTestId(id).click();
   await settle(pages);
+  await pages[3].getByTestId('toggle-diy').click();
   await expect(pages[3].getByTestId('rule-wake-all')).toHaveAttribute('aria-checked', 'true');
   await expect(host.getByTestId('rule-card')).toContainText('晚上都睁眼');
-  await host.getByTestId('variants').scrollIntoViewIfNeeded();
-  await snap(host, 'lobby-variants');
   await host.getByTestId('start-game').click();
+  if (await host.getByTestId('confirm').isVisible().catch(() => false)) await host.getByTestId('confirm-ok').click();
   await settle(pages);
 
   const ids = await Promise.all(pages.map(myId));

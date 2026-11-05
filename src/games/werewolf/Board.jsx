@@ -3,7 +3,7 @@ import PixelSprite, { Portrait } from '../pixel/PixelSprite';
 import RoundTable from '../avalon/RoundTable';
 import { Who, WhoList, useConfirm, Confetti } from '../avalon/ui';
 import {
-  ROLES, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave, changedRules,
+  ROLES, JGL_BLURB, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave, changedRules,
   swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct, hunterShoot, startVote, castVote,
   newGame, effectiveConfig,
 } from './wolfRules';
@@ -173,7 +173,7 @@ function MyHand({ g, myId }) {
             ))}
           </div>
           <div className="fs-12 c-dim mt-3 text-center">
-            {isWolfCamp(g, myId) ? <span className="c-evil">你是狼人阵营</span> : <span className="c-good">你是好人阵营</span>}
+            {isWolfCamp(g, myId) ? <span className="c-evil">{isJgl(g, myId) ? `你是金刚狼${g.jglUsed ? '（技能已用）' : ''}` : '你是狼人阵营'}</span> : <span className="c-good">你是好人阵营</span>}
             {' · '}{d >= 2 ? '你已出局' : `当前身份：${ROLES[h.cards[d]].zh}`}
           </div>
         </>
@@ -194,6 +194,7 @@ function Sleeping({ text = '天黑请闭眼' }) {
 }
 
 function ActionPanel({ g, room, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm }) {
+  const [double, setDouble] = useState(false);
   const alive = isAlive(g, myId);
   const h = g.hands[myId];
 
@@ -208,7 +209,7 @@ function ActionPanel({ g, room, myId, mine, isHost, act, update, busy, target, s
         </div>
         <p className="fs-12 c-dim mb-3 text-center">
           {hasWolf
-            ? <><span className="c-evil">你是狼人阵营。</span>{h.cards[0] === 'wolf' && h.cards[1] === 'wolf' ? '两张都是狼，每晚都能刀人。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。'}</>
+            ? <><span className="c-evil">你是狼人阵营。</span>{isJgl(g, myId) ? <><b className="c-evil">你是金刚狼！</b>{JGL_BLURB}</> : g.rules?.wake === 'all' ? '本局狼牌在下面也能睁眼刀人，可以把另一张放上面伪装。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。'}</>
             : <><span className="c-good">你是好人阵营。</span>有技能的牌放上面就能先用技能。</>}
         </p>
         {h.locked ? (
@@ -252,9 +253,19 @@ function ActionPanel({ g, room, myId, mine, isHost, act, update, busy, target, s
           <Title>狼人请睁眼</Title>
           <p className="mb-2">今晚的狼队友：{mates.length ? <WhoList ids={mates} tone="evil" /> : <span className="c-dim">只有你{g.seats.some(id => id !== myId && isWolfCamp(g, id)) ? '（其他狼牌还压在下面）' : ''}</span>}</p>
           <p className="fs-12 c-dim mb-3">在圆桌上点一个人，所有在场的狼都选好后结算（意见不同按多数，平票按座位靠前的狼）。</p>
-          {myPick && <p className="mb-3">你选了 <Who id={myPick} tone="evil" />，等待队友…</p>}
-          <button className="px-btn red lg block" disabled={busy || !target} onClick={() => act(x => wolfAct(x, myId, target))} data-testid="wolf-kill">
-            {target ? <>刀 <Who id={target} /></> : '先在圆桌上选人'}
+          {g.acts.double && g.acts.double !== myId && <p className="mb-2 c-evil">金刚狼 <Who id={g.acts.double} /> 要对 <Who id={g.acts.wolves[g.acts.double]} /> 用一刀两命。</p>}
+          {myPick && <p className="mb-3">你选了 <Who id={myPick} tone="evil" />{g.acts.double === myId ? '（金刚狼一刀两命）' : ''}，等待队友…</p>}
+          {canDouble(g, myId) && (
+            <button className={`px-role row evil mb-3 ${double ? 'on' : ''}`} onClick={() => setDouble(v => !v)} aria-pressed={double} data-testid="jgl-toggle">
+              <span className="flex flex-col gap-1">
+                <span>金刚狼一刀 <span className={`fs-12 ${double ? 'c-evil' : 'c-mute'}`}>{double ? '● 这一刀砍两条命' : '○ 不用'}</span></span>
+                <span className="fs-12 c-dim">{JGL_BLURB}</span>
+              </span>
+            </button>
+          )}
+          <button className="px-btn red lg block" disabled={busy || !target}
+            onClick={() => act(x => wolfAct(x, myId, target, { double: double && canDouble(x, myId) }))} data-testid="wolf-kill">
+            {target ? <>{double ? '一刀两命 ' : '刀 '}<Who id={target} /></> : '先在圆桌上选人'}
           </button>
         </>;
       }
@@ -264,7 +275,7 @@ function ActionPanel({ g, room, myId, mine, isHost, act, update, busy, target, s
     case 'witch': {
       if (mine !== 'witch' || !alive) return <Sleeping />;
       const kill = g.acts.kill;
-      const canSave = g.potions.save && kill && (kill !== myId || canSelfSave(g));
+      const canSave = g.potions.save && kill && !g.acts.doubleKill && (kill !== myId || canSelfSave(g));
       if (mode === 'poison') return <>
         <Title>女巫 · 毒药</Title>
         <p className="fs-12 c-dim mb-3">在圆桌上点要毒的人。被毒的猎人不能开枪。</p>
@@ -277,7 +288,8 @@ function ActionPanel({ g, room, myId, mine, isHost, act, update, busy, target, s
       </>;
       return <>
         <Title>女巫请睁眼</Title>
-        <p className="mb-3">{kill ? <>今晚 <Who id={kill} size="lg" /> 被狼刀了。</> : '今晚狼人没有刀人。'}</p>
+        <p className="mb-3">{kill ? <>今晚 <Who id={kill} size="lg" /> 被{g.acts.doubleKill ? <b className="c-evil">金刚狼一刀砍两条命</b> : '狼刀'}了。</> : '今晚狼人没有刀人。'}</p>
+        {g.acts.doubleKill && <p className="fs-12 c-evil mb-2">金刚狼的一刀，解药救不了。</p>}
         {kill === myId && g.potions.save && !canSelfSave(g) && <p className="fs-12 c-evil mb-2">{g.rules?.selfSave === 'first' ? '女巫只有第一晚能自救。' : '女巫不能自救。'}</p>}
         <div className="grid grid-cols-2">
           <button className="px-btn blue lg" disabled={busy || !canSave} onClick={() => act(x => witchAct(x, myId, { save: true }))} data-testid="witch-save">
