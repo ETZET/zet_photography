@@ -4,21 +4,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Torch } from '../pixel/PixelSprite';
 import { roomStore, getPlayerId } from '../avalon/roomStore';
+import { useRoute, navigate } from '../../route';
 import { PlayersProvider, ConfirmProvider, ConfirmOutlet, useConfirm } from '../avalon/ui';
 import { NAME_MAX_UNITS, clampName, nameUnits, uniqueName } from '../avalon/names';
 
 export const GAME_TITLES = { avalon: '阿瓦隆', werewolf: '双身份狼人' };
 const kindOf = room => room?.kind || 'avalon'; // rooms created before `kind` existed are Avalon
-
-// ---------- URL helpers (shareable ?game=<id>&room=CODE) ----------
-const readRoomFromUrl = () => new URLSearchParams(window.location.search).get('room')?.toUpperCase() || null;
-function writeRoomToUrl(gameId, code) {
-  const url = new URL(window.location.href);
-  url.searchParams.set('game', gameId);
-  if (code) url.searchParams.set('room', code);
-  else url.searchParams.delete('room');
-  window.history.replaceState(null, '', url);
-}
 
 // ---------- live room subscription ----------
 function useRoom(code) {
@@ -48,14 +39,15 @@ function RoomInner({ spec, onExit }) {
   const { Lobby, Board, useBots } = spec;
   const confirm = useConfirm();
   const myId = useMemo(getPlayerId, []);
-  const [code, setCode] = useState(readRoomFromUrl);
+  const route = useRoute();
+  const code = route.game === spec.id ? route.room : null;
+  const setCode = c => navigate({ page: 'game', game: spec.id, room: c });
   const { room: rawRoom, loaded, error: loadError } = useRoom(code);
   const wrongGame = rawRoom && kindOf(rawRoom) !== spec.id;
   const room = wrongGame ? null : rawRoom;
   const me = room?.players.find(p => p.id === myId);
   const [toast, setToast] = useState('');
 
-  useEffect(() => { writeRoomToUrl(spec.id, code); }, [spec.id, code]);
   useEffect(() => {
     if (!toast) return undefined;
     const t = setTimeout(() => setToast(''), 2200);
@@ -77,13 +69,7 @@ function RoomInner({ spec, onExit }) {
   // Test hook: lets the Playwright self-review read the shared state.
   useEffect(() => { if (import.meta.env.DEV) window.__room = room; }, [room]);
 
-  const exit = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete('room');
-    url.searchParams.delete('game');
-    window.history.replaceState(null, '', url);
-    onExit();
-  };
+  const exit = () => onExit();
 
   // Refreshing / closing mid-game is fine (you rejoin by link), but warn anyway.
   const inGame = room?.phase === 'game' && room.game?.step !== 'end';

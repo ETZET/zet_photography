@@ -5,12 +5,12 @@ import {
   ROLES, ROLE_BLURB, OPTIONAL_ROLES, EVIL_COUNT, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildRoleList, newGame,
   effectiveConfig, LADY_BLURB,
 } from './avalonRules';
-import { IS_LOCAL } from './roomStore';
+import { roomLink } from '../../route';
 import { Who, useConfirm } from './ui';
 import { addBot } from './bots';
 
 const IS_DEV = import.meta.env.DEV;
-const inviteLink = code => `${window.location.origin}${window.location.pathname}?game=avalon&room=${code}${IS_LOCAL ? '&local=1' : ''}`;
+const inviteLink = code => roomLink('avalon', code);
 
 export default function Lobby({ room, myId, update, busy }) {
   const confirm = useConfirm();

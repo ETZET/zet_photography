@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import PixelSprite, { Portrait } from '../pixel/PixelSprite';
 import RoundTable from '../avalon/RoundTable';
-import { IS_LOCAL } from '../avalon/roomStore';
+import { roomLink } from '../../route';
 import { Who, useConfirm } from '../avalon/ui';
 import {
   ROLES, ROLE_BLURB, GODS, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildDeck, effectiveConfig, newGame,
@@ -10,7 +10,7 @@ import {
 import { addBot } from './bots';
 
 const IS_DEV = import.meta.env.DEV;
-const inviteLink = code => `${window.location.origin}${window.location.pathname}?game=werewolf&room=${code}${IS_LOCAL ? '&local=1' : ''}`;
+const inviteLink = code => roomLink('werewolf', code);
 
 export function DeckLine({ deck }) {
   const counts = deck.reduce((a, c) => ({ ...a, [c]: (a[c] || 0) + 1 }), {});
@@ -192,7 +192,10 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
       <p><span className="c-gold">两张牌 = 两条命。</span>上面那张是你当前的身份，它出局后下面那张才生效。{rules.order === 'random' ? '本局顺序随机，不能调换。' : '发牌后自己排顺序。'}</p>
       <p><span className="c-evil">有一张狼牌就是狼人阵营。</span>{rules.wake === 'all' ? '狼牌不管在上面还是下面，晚上都睁眼刀人。' : '只有翻在上面的狼牌晚上能睁眼刀人。'}</p>
       <p>预言家验到的是{camp ? <span className="c-gold">阵营</span> : <span className="c-gold">当前那张牌</span>}。{rules.reveal === 'show' ? '失去一条命时亮出那张牌。' : '出局只公布少了一条命，不亮牌。'}</p>
-      <p>好人：所有狼牌出局。狼人：{rules.win === 'city' ? '屠城，好人阵营全部出局。' : '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
+      <p>好人：所有狼牌出局{rules.peace === 'three' ? '，或连续三个平安夜' : ''}。狼人：{({
+        city: '屠城，好人阵营全部出局。',
+        baby: '金宝宝（两张都是村民的人，开局互相认识）全部出局，或好人的神牌全灭。',
+      })[rules.win] || '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
       <p className="c-dim">
         没有警长；平票无人出局；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
         守卫不能连守，同守同救{rules.guardSave === 'dies' ? '会死' : '不死'}{rules.mute === 'yes' ? '；夜里失去第一条命的人当天不能投票' : ''}。

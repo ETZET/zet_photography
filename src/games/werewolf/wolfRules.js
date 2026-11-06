@@ -61,7 +61,8 @@ export const VARIANTS = [
   { key: 'guardSave', zh: '同守同救', opts: [['dies', '会死', '守卫和女巫救同一人，奶穿'], ['lives', '不死', '']] },
   { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
   { key: 'mute', zh: '夜里失去第一条命', opts: [['no', '照常投票', ''], ['yes', '当天不能投票', '第二天恢复']] },
-  { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['city', '屠城', '好人阵营全部出局']] },
+  { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['baby', '金宝宝', '两张都是村民的人（金宝宝）全部出局，或好人的神牌全灭'], ['city', '屠城', '好人阵营全部出局']] },
+  { key: 'peace', zh: '连续平安夜', opts: [['no', '不算', ''], ['three', '三晚好人胜', '连续三个晚上没有人失去命，好人直接获胜']] },
 ];
 export const DEFAULT_RULES = Object.fromEntries(VARIANTS.map(v => [v.key, v.opts[0][0]]));
 export const rulesOf = cfg => ({ ...DEFAULT_RULES, ...(cfg?.rules || {}), ...(cfg?.order ? { order: cfg.order } : {}) });
@@ -75,6 +76,7 @@ export const PRESETS = [
   { id: 'hidden', zh: '隐狼局', desc: '狼牌压在下面也睁眼刀人，狼可以把另一张放上面伪装。', rules: { wake: 'all' } },
   { id: 'jgl', zh: '金刚狼局', desc: '保证有一人拿两张狼牌，整局一次可以一刀砍两条命。', rules: { doubleWolf: 'force' } },
   { id: 'mute', zh: '一死禁票', desc: '夜里失去第一条命的人当天不能投票；出局亮牌。', rules: { mute: 'yes', reveal: 'show' } },
+  { id: 'baby', zh: '金宝宝局', desc: '双民玩家是金宝宝，开局互相认识；狼人杀光金宝宝或神就赢，连续三个平安夜好人赢。', rules: { win: 'baby', peace: 'three' } },
   { id: 'city', zh: '屠城局', desc: '狼人要杀光所有好人才赢，好人更有余地，适合新手多的局。', rules: { win: 'city' } },
 ];
 export const presetRules = id => ({ ...DEFAULT_RULES, ...(PRESETS.find(p => p.id === id)?.rules || {}) });
@@ -134,7 +136,8 @@ export function newGame(players, cfg) {
     const goodPlayers = seats.filter((_, i) => wolvesOf(i) === 0);
     const doubles = seats.filter((_, i) => wolvesOf(i) === 2).length;
     const dealOk = rules.doubleWolf === 'maybe' || (rules.doubleWolf === 'force' ? doubles === 1 || deck.cards.filter(c => c === 'wolf').length < 2 : doubles === 0);
-    if (goodPlayers.length >= 2 && dealOk) break;
+    const babyOk = rules.win !== 'baby' || seats.some((_, i) => cards[2 * i] === 'villager' && cards[2 * i + 1] === 'villager');
+    if (goodPlayers.length >= 2 && dealOk && babyOk) break;
   }
   const hands = {};
   const dead = {};
@@ -160,6 +163,7 @@ export function newGame(players, cfg) {
     hunter: null,
     winner: null,
     jglUsed: false,
+    peaceStreak: 0,
   };
   g.goodGodsAtStart = goodCampCards(g).gods;
   if (rules.order === 'random') startNight(g);
@@ -183,6 +187,9 @@ export const isMuted = (g, id) => R(g).mute === 'yes' && g.step === 'vote' && (g
 /** 金刚狼: holds two wolf cards, both still alive, skill unused, awake tonight. */
 export const isJgl = (g, id) => g.hands[id].cards.every(c => c === 'wolf');
 export const canDouble = (g, id) => isJgl(g, id) && g.dead[id] === 0 && !g.jglUsed && isNightWolf(g, id);
+/** 金宝宝: both cards are villagers. They know each other from the start (金宝宝 variant). */
+export const isBaby = (g, id) => g.hands[id].cards.every(c => c === 'villager');
+export const babies = g => g.seats.filter(id => isBaby(g, id));
 export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id));
 
 function goodCampCards(g) {
@@ -198,7 +205,7 @@ const wolfCardsLeft = g => g.seats.reduce((n, id) => n + g.hands[id].cards.slice
 
 export function score(g) {
   const { villagers, gods } = goodCampCards(g);
-  return { wolves: wolfCardsLeft(g), villagers, gods };
+  return { wolves: wolfCardsLeft(g), villagers, gods, babies: babies(g).filter(id => isAlive(g, id)).length };
 }
 
 // -------------------------------------------------------------- arrange ---
@@ -336,6 +343,7 @@ function resolveNight(g) {
   g.day = g.night;
   g.log.push({ type: 'night', night: g.night, lost, double: a.doubleKill || undefined });
   g.lastNight = { night: g.night, lost };
+  g.peaceStreak = lost.length ? 0 : (g.peaceStreak || 0) + 1;
   if (checkWin(g)) return;
   g.step = g.hunter ? 'hunter' : 'day';
   if (g.hunter) g.hunter.then = 'day';
@@ -393,10 +401,13 @@ function checkWin(g) {
   const s = score(g);
   let winner = null;
   let reason = '';
+  const win = R(g).win;
   if (s.wolves === 0) { winner = 'good'; reason = '所有狼牌都出局了'; }
-  else if (R(g).win === 'city') { if (s.villagers + s.gods === 0) { winner = 'wolf'; reason = '屠城：好人阵营全部出局'; } }
-  else if (s.villagers === 0) { winner = 'wolf'; reason = '屠边：好人阵营的村民牌全部出局'; }
-  else if (g.goodGodsAtStart > 0 && s.gods === 0) { winner = 'wolf'; reason = '屠边：好人阵营的神牌全部出局'; }
+  else if (R(g).peace === 'three' && g.peaceStreak >= 3) { winner = 'good'; reason = '连续三个平安夜'; }
+  else if (win === 'city') { if (s.villagers + s.gods === 0) { winner = 'wolf'; reason = '屠城：好人阵营全部出局'; } }
+  else if (win === 'baby' && s.babies === 0) { winner = 'wolf'; reason = '金宝宝全部出局'; }
+  else if (win !== 'baby' && s.villagers === 0) { winner = 'wolf'; reason = '屠边：好人阵营的村民牌全部出局'; }
+  else if (g.goodGodsAtStart > 0 && s.gods === 0) { winner = 'wolf'; reason = win === 'baby' ? '好人阵营的神牌全部出局' : '屠边：好人阵营的神牌全部出局'; }
   if (!winner) return false;
   g.winner = winner;
   g.reason = reason;

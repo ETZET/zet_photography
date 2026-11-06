@@ -84,18 +84,21 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   for (let i = 0; i < NAMES.length; i++) pages.push(await (shared || await browser.newContext(phone)).newPage());
   const host = pages[0];
 
-  await host.goto(`/?game=werewolf${Q}`);
+  await host.goto(`/game/werewolf${REMOTE ? '' : '?local=1'}`);
   await expect(host.getByText('双身份狼人').first()).toBeVisible();
   await snap(host, 'entry');
   await host.getByTestId('name-input').fill(NAMES[0]);
   await host.getByRole('button', { name: '创建房间' }).click();
   const code = (await host.getByTestId('room-code').textContent())!.trim();
+  expect(new URL(host.url()).pathname).toBe(`/game/werewolf/${code}`);
 
   for (let i = 1; i < pages.length; i++) {
     await pages[i].goto(`/?game=werewolf&room=${code}${Q}`);
     await pages[i].getByTestId('name-input').fill(NAMES[i]);
     await pages[i].getByRole('button', { name: '加入房间' }).click();
     await expect(pages[i].getByTestId('room-code')).toHaveText(code);
+    // old ?game=&room= links are rewritten to the path form
+    expect(new URL(pages[i].url()).pathname).toBe(`/game/werewolf/${code}`);
   }
   await settle(pages);
   await expect(host.getByTestId('deck')).toContainText('狼人×2');
@@ -123,11 +126,12 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   await settle(pages);
   await expect(host.getByTestId('preset-standard')).toHaveAttribute('aria-pressed', 'true');
   // DIY house rules on top of the tuned deck; every phone must see them
-  for (const id of ['rule-wake-all', 'rule-reveal-show', 'rule-mute-yes', 'rule-selfSave-first']) await host.getByTestId(id).click();
+  for (const id of ['rule-wake-all', 'rule-reveal-show', 'rule-mute-yes', 'rule-selfSave-first', 'rule-win-baby', 'rule-peace-three']) await host.getByTestId(id).click();
   await settle(pages);
   await pages[3].getByTestId('toggle-diy').click();
   await expect(pages[3].getByTestId('rule-wake-all')).toHaveAttribute('aria-checked', 'true');
   await expect(host.getByTestId('rule-card')).toContainText('晚上都睁眼');
+  await expect(host.getByTestId('rule-card')).toContainText('金宝宝');
   await host.getByTestId('start-game').click();
   if (await host.getByTestId('confirm').isVisible().catch(() => false)) await host.getByTestId('confirm-ok').click();
   await settle(pages);
@@ -143,6 +147,12 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   const goodPlayer = g.seats.find(id => !wolfCamp(g, id))!;
   await snap(pageOf(wolfPlayer), 'arrange-wolf');
   await snap(pageOf(goodPlayer), 'arrange-good');
+  // 金宝宝 (two villager cards) see each other from the start
+  const baby = g.seats.find(id => g.hands[id].cards.every(c => c === 'villager'));
+  expect(baby).toBeTruthy();
+  await expect(pageOf(baby!).getByTestId('baby-mates')).toBeVisible();
+  await pageOf(baby!).getByTestId('baby-mates').scrollIntoViewIfNeeded();
+  await snap(pageOf(baby!), 'arrange-baby');
   for (const id of g.seats) {
     const p = pageOf(id);
     const [top, bottom] = g.hands[id].cards;

@@ -10,6 +10,7 @@ import GalleryManagement from './components/GalleryManagement';
 const GamesPage = lazy(() => import('./games/GamesPage'));
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { initializePhotoSeries } from './data/photoSeries';
+import { useRoute, navigate } from './route';
 
 // Create a client with optimized settings for S3 presigned URLs
 const queryClient = new QueryClient({
@@ -32,20 +33,12 @@ const AppContent = () => {
   const [currentSeriesPhotos, setCurrentSeriesPhotos] = useState([]);
   const [photoSeries, setPhotoSeries] = useState([]);
   const [loading, setLoading] = useState(true);
-  // Deep links like ?game=avalon&room=ABCD open the game tab directly.
-  const initialGame = new URLSearchParams(window.location.search).get('game');
-  const [currentPage, setCurrentPage] = useState(initialGame ? 'game' : 'work'); // 'work', 'about', 'game', 'login', or 'manage'
-  const [currentGame, setCurrentGame] = useState(initialGame);
-
-  // Drop game deep-link params once the user leaves the game.
-  useEffect(() => {
-    if (currentPage === 'game' && currentGame) return;
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has('game') && !url.searchParams.has('room')) return;
-    url.searchParams.delete('game');
-    url.searchParams.delete('room');
-    window.history.replaceState(null, '', url);
-  }, [currentPage, currentGame]);
+  // Pages live in the URL path (/about, /game/werewolf/ABCD …) — see route.js.
+  const route = useRoute();
+  const currentPage = route.page;
+  const currentGame = route.game;
+  const setCurrentPage = page => navigate({ page });
+  const setCurrentGame = game => navigate({ page: 'game', game });
 
   const loadPhotoSeriesData = useCallback(async (forceRefresh = false) => {
     try {
@@ -157,7 +150,7 @@ const AppContent = () => {
             ABOUT
           </button>
           <button 
-            onClick={() => { setCurrentPage('game'); setCurrentGame(null); }}
+            onClick={() => setCurrentPage('game')}
             className={`hover:text-gray-600 transition-colors ${currentPage === 'game' ? 'font-medium' : ''}`}
           >
             GAME
@@ -192,10 +185,10 @@ const AppContent = () => {
 
       {currentPage === 'about' ? (
         <AboutPage onNavigateToLogin={() => setCurrentPage('login')} />
-      ) : currentPage === 'login' ? (
+      ) : currentPage === 'login' || (currentPage === 'manage' && !isAuthenticated) ? (
         <LoginPage 
           onBack={() => setCurrentPage('about')} 
-          onLoginSuccess={() => setCurrentPage('work')}
+          onLoginSuccess={() => currentPage === 'manage' || setCurrentPage('work')}
         />
       ) : currentPage === 'game' ? (
         <Suspense fallback={<div className="min-h-[60vh] bg-[#0e0a1c]" />}>

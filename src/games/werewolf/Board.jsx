@@ -3,7 +3,7 @@ import PixelSprite, { Portrait } from '../pixel/PixelSprite';
 import RoundTable from '../avalon/RoundTable';
 import { Who, WhoList, useConfirm, Confetti } from '../avalon/ui';
 import {
-  ROLES, JGL_BLURB, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave, changedRules,
+  ROLES, JGL_BLURB, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave, changedRules, isBaby, babies,
   swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct, hunterShoot, startVote, castVote,
   newGame, effectiveConfig,
 } from './wolfRules';
@@ -77,10 +77,10 @@ export default function Board({ room, myId, update, busy }) {
     switch (g.step) {
       case 'arrange': return <><div className="fs-24 c-gold shadow-px">排牌</div><div className="fs-12 c-dim">{g.seats.filter(id => g.hands[id].locked).length}/{g.seats.length} 人已排好</div></>;
       case 'night': case 'witch': return <><PixelSprite name="moon" scale={2} /><div className="fs-24 c-gold shadow-px">第 {g.night} 夜</div><div className="fs-12 c-dim">天黑请闭眼</div></>;
-      case 'day': return <><div className="fs-12 c-dim">第 {g.day} 天</div><div className="fs-24 c-gold shadow-px">天亮了</div><div className="fs-12">{g.lastNight?.lost.length ? `${g.lastNight.lost.length} 条命消失` : '平安夜'}</div></>;
+      case 'day': return <><div className="fs-12 c-dim">第 {g.day} 天</div><div className="fs-24 c-gold shadow-px">天亮了</div><div className="fs-12">{g.lastNight?.lost.length ? `${g.lastNight.lost.length} 条命消失` : g.rules?.peace === 'three' ? `平安夜（连续 ${g.peaceStreak} 晚，3 晚好人胜）` : '平安夜'}</div></>;
       case 'hunter': return <><div className="fs-24 c-evil shadow-px">猎人开枪</div><div className="fs-12"><Who id={g.hunter.id} /></div></>;
       case 'vote': return <><div className="fs-12 c-dim">第 {g.day} 天</div><div className="fs-24 c-gold shadow-px">放逐投票</div><div className="fs-12">{Object.keys(g.votes).length}/{voters(g).length} 已投</div></>;
-      case 'end': return <><div className={`fs-36 shadow-px ${g.winner === 'good' ? 'c-good' : 'c-evil'}`}>{g.winner === 'good' ? '好人胜利' : '狼人胜利'}</div><div className="fs-12">{g.reason}</div><div className="fs-12 c-dim">剩余 狼牌 {s.wolves} · 村民 {s.villagers} · 神 {s.gods}</div></>;
+      case 'end': return <><div className={`fs-36 shadow-px ${g.winner === 'good' ? 'c-good' : 'c-evil'}`}>{g.winner === 'good' ? '好人胜利' : '狼人胜利'}</div><div className="fs-12">{g.reason}</div><div className="fs-12 c-dim">剩余 狼牌 {s.wolves} · {g.rules?.win === 'baby' ? `金宝宝 ${s.babies} 人` : `村民 ${s.villagers}`} · 神 {s.gods}</div></>;
       default: return null;
     }
   })();
@@ -176,9 +176,23 @@ function MyHand({ g, myId }) {
             {isWolfCamp(g, myId) ? <span className="c-evil">{isJgl(g, myId) ? `你是金刚狼${g.jglUsed ? '（技能已用）' : ''}` : '你是狼人阵营'}</span> : <span className="c-good">你是好人阵营</span>}
             {' · '}{d >= 2 ? '你已出局' : `当前身份：${ROLES[h.cards[d]].zh}`}
           </div>
+          <BabyMates g={g} myId={myId} />
         </>
       ) : <div className="fs-12 c-mute text-center py-6">已遮住（防偷看）</div>}
     </div>
+  );
+}
+
+/** 金宝宝 variant: players holding two villager cards know each other from the start. */
+function BabyMates({ g, myId }) {
+  if (g.rules?.win !== 'baby' || !isBaby(g, myId)) return null;
+  const mates = babies(g).filter(id => id !== myId);
+  return (
+    <p className="fs-12 mt-2 text-center" data-testid="baby-mates">
+      <span className="c-gold">你是金宝宝（双民）。</span>
+      {mates.length ? <>其他金宝宝：<WhoList ids={mates} tone="good" /></> : <span className="c-dim">场上只有你一个金宝宝。</span>}
+      <span className="c-dim"> 金宝宝全部出局狼人就赢，保护好自己。</span>
+    </p>
   );
 }
 
@@ -212,6 +226,7 @@ function ActionPanel({ g, room, myId, mine, isHost, act, update, busy, target, s
             ? <><span className="c-evil">你是狼人阵营。</span>{isJgl(g, myId) ? <><b className="c-evil">你是金刚狼！</b>{JGL_BLURB}</> : g.rules?.wake === 'all' ? '本局狼牌在下面也能睁眼刀人，可以把另一张放上面伪装。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。'}</>
             : <><span className="c-good">你是好人阵营。</span>有技能的牌放上面就能先用技能。</>}
         </p>
+        <BabyMates g={g} myId={myId} />
         {h.locked ? (
           <div className="text-center c-dim">已锁定，等待其他人… ({g.seats.filter(id => g.hands[id].locked).length}/{g.seats.length})</div>
         ) : (
