@@ -131,46 +131,36 @@ test('双身份狼人 screen gallery', async ({ browser }) => {
   section = '排牌';
   await stage(host, { hands: MAIN, lock: false });
   await dismissAll(pages);
-  await shot(P('阿花'), '排牌（盖着）', '牌默认盖着，邻座看不到');
-  await hold(P('阿花'), 'arrange-peek');
-  await shot(P('阿花'), '按住看牌：狼人', '按住才显示，松手盖上');
-  await release(P('阿花'), 'arrange-peek');
-  await hold(P('村长'), 'arrange-peek');
-  await shot(P('村长'), '按住看牌：好人', '');
-  await release(P('村长'), 'arrange-peek');
+  await shot(P('阿花'), '狼人排牌', '排牌时直接显示牌面');
+  await shot(P('村长'), '好人排牌', '');
   await stage(host, { hands: [['villager', 'seer'], ['wolf', 'wolf'], ['villager', 'villager'], ['witch', 'villager'], ['wolf', 'hunter'], ['guard', 'villager']], rules: { doubleWolf: 'force' }, lock: false });
-  await hold(P('阿花'), 'arrange-peek');
   await shot(P('阿花'), '金刚狼排牌', '两张狼牌 = 金刚狼；现在至少还有一个狼队友');
-  await release(P('阿花'), 'arrange-peek');
   await stage(host, { hands: [['seer', 'villager'], ['wolf', 'villager'], ['villager', 'villager'], ['witch', 'wolf'], ['villager', 'villager'], ['guard', 'villager']], rules: { win: 'baby', peace: 'three' }, lock: false,
     then: 'g.hands[ids[0]].locked = true; g.hands[ids[1]].locked = true; g.hands[ids[3]].locked = true;' });
-  await hold(P('铁柱'), 'arrange-peek');
   await shot(P('铁柱'), '金宝宝排牌', '金宝宝能看到其他金宝宝');
-  await release(P('铁柱'), 'arrange-peek');
   await shot(P('村长'), '锁定后等待', '桌上不再显示谁已锁定，只显示人数');
 
   // ---------------------------------------------------------------- night
   section = '第一夜';
   await stage(host, { hands: MAIN });
-  await tap(P('铁柱'), '老王');
-  await shot(P('铁柱'), '闭眼的人', '和行动的人同样的面板：可以私下记一个怀疑对象');
+  await shot(P('铁柱'), '闭眼的人', '夜间面板高度统一');
   await tap(P('二狗'), '村长');
-  await shot(P('二狗'), '守卫', '所有夜间面板同一种颜色、同一个高度');
+  await shot(P('二狗'), '守卫', '按钮恢复角色颜色：守卫蓝、预言家金、狼红');
   await P('二狗').getByTestId('guard-act').click();
   await tap(P('村长'), '阿花');
   await shot(P('村长'), '预言家', '');
   await P('村长').getByTestId('seer-act').click();
   await expect(P('村长').getByTestId('seer-reveal')).toBeVisible();
-  await shot(P('村长'), '预言家结果', '狼人 / 好人用同一种颜色，只有字不同', { full: false });
+  await shot(P('村长'), '预言家结果', '', { full: false });
   await P('村长').getByTestId('close-seer').click();
   await tap(P('阿花'), '铁柱');
   await shot(P('阿花'), '狼人选刀', '');
   await P('阿花').getByTestId('wolf-kill').click();
-  await shot(P('老王'), '队友已出刀', '「刀」标记也是中性色');
+  await shot(P('老王'), '队友已出刀', '');
   await tap(P('老王'), '铁柱');
   await P('老王').getByTestId('wolf-kill').click();
   await expect(P('小美').getByTestId('witch-save')).toBeVisible();
-  await shot(P('小美'), '女巫', '救 / 毒 / 不用，按钮同色');
+  await shot(P('小美'), '女巫', '救（蓝）/ 毒（红）/ 不用');
   await P('小美').getByTestId('witch-skip').click();
   await shot(P('二狗'), '守卫等天亮', '每晚至少 30 秒，结束时间带随机延迟，看不出谁还在操作');
 
@@ -235,7 +225,7 @@ test('双身份狼人 screen gallery', async ({ browser }) => {
     then: 'R.guardAct(g, ids[5], ids[0]); R.seerAct(g, ids[0], ids[2]); R.wolfAct(g, ids[4], ids[0]);' });
   await P('阿花').getByTestId('jgl-toggle').click();
   await tap(P('阿花'), '村长');
-  await shot(P('阿花'), '金刚狼一刀两命', '开关和其他夜间控件同色');
+  await shot(P('阿花'), '金刚狼一刀两命', '');
   await P('阿花').getByTestId('wolf-kill').click();
   await expect(P('小美').getByTestId('witch-save')).toBeVisible();
   await shot(P('小美'), '女巫面对金刚狼', '解药不可用');

@@ -344,6 +344,7 @@
 .px-nightpanel .c-dim { color: #b3abd9; }
 .px-nightbox { min-height: 196px; }
 .px-check { width: 22px; height: 22px; accent-color: #8a80d0; flex: none; }
+.px-check.evil { accent-color: var(--evil); }
 .px-rcard-label { font-size: 12px; padding: 2px 6px; background: rgba(7,5,14,0.6); color: var(--ink); }
 .px-peek { cursor: pointer; touch-action: none; -webkit-touch-callout: none; outline: none; }
 .px-peek:focus-visible { box-shadow: 0 0 0 3px var(--gold); }

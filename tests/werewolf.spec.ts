@@ -152,9 +152,6 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   // 金宝宝 (two villager cards) see each other from the start
   const baby = g.seats.find(id => g.hands[id].cards.every(c => c === 'villager'));
   expect(baby).toBeTruthy();
-  // cards are covered until you press and hold
-  await expect(pageOf(baby!).getByTestId('baby-mates')).toHaveCount(0);
-  await pageOf(baby!).getByTestId('arrange-peek').dispatchEvent('pointerdown');
   await expect(pageOf(baby!).getByTestId('baby-mates')).toBeVisible();
   await pageOf(baby!).getByTestId('baby-mates').scrollIntoViewIfNeeded();
   await snap(pageOf(baby!), 'arrange-baby');

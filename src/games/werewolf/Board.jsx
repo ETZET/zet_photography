@@ -46,7 +46,6 @@ export default function Board({ room, myId, update, busy }) {
   const mine = activeCard(g, myId);
   const [target, setTarget] = useState(null);
   const [mode, setMode] = useState(null); // witch: 'poison'
-  const [suspect, setSuspect] = useState(null); // sleepers' private note at night
   const act = fn => update(r => { fn(r.game); return r; });
   const roomKey = `${room.code}:${room.round}`;
 
@@ -70,17 +69,15 @@ export default function Board({ room, myId, update, busy }) {
       case 'night': {
         if (task === 'guard') return id !== g.guardLast;
         if (task === 'seer') return id !== myId;
-        if (task === 'wolf' || (isNightWolf(g, myId) && myId in g.acts.wolves)) return true;
-        return isAlive(g, myId) && id !== myId; // sleepers note a suspect
+        return task === 'wolf' || (isNightWolf(g, myId) && myId in g.acts.wolves);
       }
-      case 'witch': return mine === 'witch' && !g.acts.witchDone ? mode === 'poison' : isAlive(g, myId) && id !== myId;
+      case 'witch': return mine === 'witch' && !g.acts.witchDone && mode === 'poison';
       case 'confirm': return iConfirm && g.confirm.hunter === myId && id !== myId;
       case 'vote': return isAlive(g, myId) && voters(g).includes(myId) && id !== myId && candidates(g).includes(id);
       default: return false;
     }
   };
-  const sleeperMode = isNight(g.step) && isAlive(g, myId) && !task && !(isNightWolf(g, myId) && g.step === 'night') && !(g.step === 'witch' && mine === 'witch' && !g.acts.witchDone);
-  const onSeat = id => (sleeperMode ? setSuspect(s => (s === id ? null : id)) : setTarget(id));
+  const onSeat = id => setTarget(id);
 
   // seer results stay on the seer's own phone, and only while acting at night
   const seerSaw = g.step === 'night' && mine === 'seer'
@@ -96,20 +93,19 @@ export default function Board({ room, myId, update, busy }) {
     else if (g.step === 'vote' && isAlive(g, id)) badge = id in g.votes ? <span key="v1" className="px-tag ok px-stamp">已投</span> : <span key="v0" className="px-tag">…</span>;
     else if (wolfView) {
       const n = wolfMates.filter(w => g.acts.wolves[w] === id).length;
-      if (n) badge = <span key={`k${n}`} className="px-tag night px-stamp">刀{n > 1 ? `×${n}` : ''}</span>;
+      if (n) badge = <span key={`k${n}`} className="px-tag evil px-stamp">刀{n > 1 ? `×${n}` : ''}</span>;
     }
     if (!badge && speakerNow(g) === id) badge = <span key="spk" className="px-tag gold px-stamp">发言</span>;
-    if (!badge && id in seerSaw) badge = <span className="px-tag night">{seerSaw[id] ? '狼' : '好'}</span>;
-    if (!badge && sleeperMode && suspect === id) badge = <span className="px-tag night">?</span>;
+    if (!badge && id in seerSaw) badge = <span className={`px-tag ${seerSaw[id] ? 'evil' : 'good'}`}>{seerSaw[id] ? '狼' : '好'}</span>;
     return {
       top: (
         <>
           <Lives n={lives(g, id)} />
-          {wolfView && wolfMates.includes(id) && id !== myId && <span className="px-tag night">狼</span>}
+          {wolfView && wolfMates.includes(id) && id !== myId && <span className="px-tag evil">狼</span>}
         </>
       ),
       badge,
-      cls: [out && 'out', (target === id || (sleeperMode && suspect === id)) && 'target'].filter(Boolean).join(' '),
+      cls: [out && 'out', target === id && 'target'].filter(Boolean).join(' '),
       role: g.step === 'end' ? ROLES[g.hands[id].cards[0]].sprite : null,
       clickable: pickable(id),
     };
@@ -145,7 +141,7 @@ export default function Board({ room, myId, update, busy }) {
       <div className="flex flex-col gap-3 sm:gap-6 relative z-[1] min-w-0">
         <div className={`px-frame pad tight ${darkPanel ? 'px-nightpanel' : 'parch'}`} data-testid="action-panel">
           <div key={`${g.step}-${g.night}-${mode}`} className="px-slide">
-            <ActionPanel {...{ g, room, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, suspect, task }} />
+            <ActionPanel {...{ g, room, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, task }} />
           </div>
         </div>
         {isHost && isNight(g.step) && <ForceDawn g={g} act={act} busy={busy} />}
@@ -315,9 +311,9 @@ function NightPanel({ title, children, button }) {
     </div>
   );
 }
-const NightBtn = ({ children, ...p }) => <button className="px-btn night lg block" {...p}>{children}</button>;
+const NightBtn = ({ tone = 'dark', children, ...p }) => <button className={`px-btn ${tone} lg block`} {...p}>{children}</button>;
 
-function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, suspect, task }) {
+function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, task }) {
   const [double, setDouble] = useState(false);
   const alive = isAlive(g, myId);
   const h = g.hands[myId];
@@ -328,7 +324,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       const hasWolf = h.cards.includes('wolf');
       return <>
         <Title>排好你的两张牌</Title>
-        <Peek testId="arrange-peek" label="按住看牌">
+        <div data-testid="arrange-cards">
           <div className="flex justify-center gap-4 mb-3">
             <RoleCard role={h.cards[0]} label="上 · 先用" state="now" />
             <RoleCard role={h.cards[1]} label="下 · 第二条命" state="wait" />
@@ -340,7 +336,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
               : '有技能的牌放上面就能先用技能。'}
           </p>
           <BabyMates g={g} myId={myId} />
-        </Peek>
+        </div>
         {h.locked ? (
           <div className="text-center c-dim mt-3">已锁定，等其他人排好…</div>
         ) : (
@@ -355,12 +351,12 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
     case 'night': case 'witch': {
       if (!alive) return <NightPanel title="你已出局">安静观战，不要出声。</NightPanel>;
       if (task === 'guard') return (
-        <NightPanel title="守卫请睁眼" button={<NightBtn disabled={busy || !target} onClick={() => act(x => guardAct(x, myId, target))} data-testid="guard-act">{target ? <>守护 <Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
+        <NightPanel title="守卫请睁眼" button={<NightBtn tone="blue" disabled={busy || !target} onClick={() => act(x => guardAct(x, myId, target))} data-testid="guard-act">{target ? <>守护 <Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
           选一个人今晚不被狼刀（可以守自己）。{g.guardLast && <>昨晚守了 <Who id={g.guardLast} />，今晚不能再守。</>}
         </NightPanel>
       );
       if (task === 'seer') return (
-        <NightPanel title="预言家请睁眼" button={<NightBtn disabled={busy || !target} onClick={() => act(x => seerAct(x, myId, target))} data-testid="seer-act">{target ? <>查验 <Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
+        <NightPanel title="预言家请睁眼" button={<NightBtn tone="gold" disabled={busy || !target} onClick={() => act(x => seerAct(x, myId, target))} data-testid="seer-act">{target ? <>查验 <Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
           {g.rules?.seer === 'camp' ? '查验他的阵营（手里还有狼牌就是狼人）。' : '查验他当前那张牌，下面那张看不到。'}
         </NightPanel>
       );
@@ -369,13 +365,13 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
         const myPick = g.acts.wolves[myId];
         return (
           <NightPanel title="狼人请睁眼" button={myPick
-            ? <NightBtn disabled>已选 <Who id={myPick} />{g.acts.double === myId ? '（一刀两命）' : ''} · 等队友</NightBtn>
-            : <NightBtn disabled={busy || !target} onClick={() => act(x => wolfAct(x, myId, target, { double: double && canDouble(x, myId) }))} data-testid="wolf-kill">{target ? <>{double ? '一刀两命 ' : '刀 '}<Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
+            ? <NightBtn tone="red" disabled>已选 <Who id={myPick} />{g.acts.double === myId ? '（一刀两命）' : ''} · 等队友</NightBtn>
+            : <NightBtn tone="red" disabled={busy || !target} onClick={() => act(x => wolfAct(x, myId, target, { double: double && canDouble(x, myId) }))} data-testid="wolf-kill">{target ? <>{double ? '一刀两命 ' : '刀 '}<Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
             <div className="mb-1">狼队友：{mates.length ? <WhoList ids={mates} /> : <>只有你{g.seats.some(id => id !== myId && isWolfCamp(g, id)) ? '（其他狼牌还压在下面）' : ''}</>}</div>
             {g.acts.double && g.acts.double !== myId && <div className="mb-1">金刚狼 <Who id={g.acts.double} /> 要对 <Who id={g.acts.wolves[g.acts.double]} /> 用一刀两命。</div>}
             {canDouble(g, myId) && !myPick && (
               <label className="flex items-center gap-2 mb-1" data-testid="jgl-toggle">
-                <input type="checkbox" checked={double} onChange={e => setDouble(e.target.checked)} className="px-check" />
+                <input type="checkbox" checked={double} onChange={e => setDouble(e.target.checked)} className="px-check evil" />
                 <span>金刚狼一刀两命（整局一次，守卫和解药挡不住）</span>
               </label>
             )}
@@ -389,8 +385,8 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
         if (mode === 'poison') return (
           <NightPanel title="女巫 · 毒药" button={
             <div className="grid grid-cols-2">
-              <button className="px-btn night lg" onClick={() => { setMode(null); setTarget(null); }}>返回</button>
-              <NightBtn disabled={busy || !target} onClick={() => act(x => witchAct(x, myId, { poison: target }))} data-testid="witch-poison-go">{target ? <>毒 <Who id={target} /></> : '选人'}</NightBtn>
+              <button className="px-btn dark lg" onClick={() => { setMode(null); setTarget(null); }}>返回</button>
+              <NightBtn tone="red" disabled={busy || !target} onClick={() => act(x => witchAct(x, myId, { poison: target }))} data-testid="witch-poison-go">{target ? <>毒 <Who id={target} /></> : '选人'}</NightBtn>
             </div>}>
             在圆桌上点要毒的人。被毒的猎人不能开枪。
           </NightPanel>
@@ -398,10 +394,10 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
         return (
           <NightPanel title="女巫请睁眼" button={<>
             <div className="grid grid-cols-2">
-              <button className="px-btn night lg" disabled={busy || !canSave} onClick={() => act(x => witchAct(x, myId, { save: true }))} data-testid="witch-save">{g.potions.save ? '救他' : '解药已用'}</button>
-              <button className="px-btn night lg" disabled={busy || !g.potions.poison} onClick={() => setMode('poison')} data-testid="witch-poison">{g.potions.poison ? '用毒药…' : '毒药已用'}</button>
+              <button className="px-btn blue lg" disabled={busy || !canSave} onClick={() => act(x => witchAct(x, myId, { save: true }))} data-testid="witch-save">{g.potions.save ? '救他' : '解药已用'}</button>
+              <button className="px-btn red lg" disabled={busy || !g.potions.poison} onClick={() => setMode('poison')} data-testid="witch-poison">{g.potions.poison ? '用毒药…' : '毒药已用'}</button>
             </div>
-            <button className="px-btn night block mt-2" disabled={busy} onClick={() => act(x => witchAct(x, myId, {}))} data-testid="witch-skip">今晚不用药</button>
+            <button className="px-btn dark block mt-2" disabled={busy} onClick={() => act(x => witchAct(x, myId, {}))} data-testid="witch-skip">今晚不用药</button>
           </>}>
             {kill ? <>今晚 <Who id={kill} /> 被{g.acts.doubleKill ? '金刚狼一刀砍两条命，解药救不了' : '狼刀了'}。</> : '今晚狼人没有刀人。'}
             {kill === myId && g.potions.save && !canSelfSave(g) && <> {g.rules?.selfSave === 'first' ? '女巫只有第一晚能自救。' : '女巫不能自救。'}</>}
@@ -414,9 +410,9 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
         : mine === 'witch' && g.acts.witchDone && g.step === 'witch' ? '你已经用完今晚的药。'
         : isNightWolf(g, myId) && g.acts.wolves[myId] ? <>狼队已出刀。</> : null;
       return (
-        <NightPanel title="天黑请闭眼" button={<NightBtn disabled>{suspect ? <>记下：怀疑 <Who id={suspect} /></> : '点圆桌记下你怀疑的人'}</NightBtn>}>
+        <NightPanel title="天黑请闭眼">
           {doneLine && <div className="mb-1">{doneLine}</div>}
-          等有行动的人操作完就天亮。你也可以在圆桌上点一个怀疑的人，只有你看得到，不影响结果。
+          等有行动的人操作完就天亮，请不要偷看别人的手机。
         </NightPanel>
       );
     }
@@ -431,8 +427,8 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       return (
         <NightPanel title="你失去了一条命" button={isHunter
           ? <div className="grid grid-cols-2">
-              <button className="px-btn night lg" disabled={busy} onClick={() => act(x => ackLoss(x, myId))} data-testid="hunter-skip">不开枪</button>
-              <button className="px-btn night lg" disabled={busy || !target} data-testid="hunter-shoot"
+              <button className="px-btn dark lg" disabled={busy} onClick={() => act(x => ackLoss(x, myId))} data-testid="hunter-skip">不开枪</button>
+              <button className="px-btn red lg" disabled={busy || !target} data-testid="hunter-shoot"
                 onClick={async () => { if (await confirm({ title: '开枪', body: <>带走 <Who id={target} size="lg" /> 的一条命？</>, ok: '开枪', tone: 'danger' })) act(x => ackLoss(x, myId, { shoot: target })); }}>
                 {target ? <>开枪 <Who id={target} /></> : '点人开枪'}
               </button>
@@ -714,15 +710,14 @@ function SeerReveal({ g, myId, roomKey }) {
   const key = mineNow ? `ww:seer:${roomKey}:${last.night}` : null;
   const [isDone, done] = useDismissed(key);
   if (!key || isDone) return null;
-  // same frame and colour either way: only the word differs
   return (
     <div className="px-overlay" onClick={done} data-testid="seer-reveal">
-      <div className="px-frame pad flex flex-col items-center gap-4 text-center max-w-[420px] w-full px-pop" onClick={e => e.stopPropagation()}>
+      <div className={`px-frame pad flex flex-col items-center gap-4 text-center max-w-[420px] w-full px-pop ${last.wolf ? 'danger' : ''}`} onClick={e => e.stopPropagation()}>
         <Portrait role="seer" scale={3} className="px-bob" />
         <div className="fs-12 c-dim">水晶球显示（只有你看得到）</div>
         <Who id={last.to} size="lg" />
         <div className="px-stamp" style={{ animationDelay: '0.5s' }}>
-          <div className="fs-36 shadow-px c-gold">{g.rules?.seer === 'camp' ? '' : '当前是'}{last.wolf ? '狼人' : '好人'}</div>
+          <div className={`fs-36 shadow-px ${last.wolf ? 'c-evil' : 'c-good'}`}>{g.rules?.seer === 'camp' ? '' : '当前是'}{last.wolf ? '狼人' : '好人'}</div>
         </div>
         <div className="fs-12 c-dim">{g.rules?.seer === 'camp' ? '验的是阵营' : '提醒：他下面那张牌可能不一样'}</div>
         <button className="px-btn gold" onClick={done} data-testid="close-seer">知道了</button>
