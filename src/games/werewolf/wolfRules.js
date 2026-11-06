@@ -31,7 +31,7 @@ export const GODS = ['seer', 'witch', 'hunter', 'guard'];
 
 // 丘比特模式 (special mode, like Avalon's 湖中仙女): one 丘比特 card joins the deck.
 export const CUPID_MIN = 8;
-export const CUPID_BLURB = '加入一张丘比特牌。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。人狼恋的情侣和丘比特变成第三方：活到只剩自己人才赢。';
+export const CUPID_BLURB = '加入一张丘比特牌。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。人狼恋的情侣和丘比特变成丘比特阵营：活到只剩自己人才赢；情侣殉情后丘比特也不回好人阵营。';
 export const JGL_BLURB = '金刚狼：两张牌都是狼。整局一次，可以一刀砍掉一个人的两条命，守卫和女巫的解药都挡不住。有一张狼牌出局后就不能再用。';
 
 export const ROLE_BLURB = {
@@ -220,7 +220,8 @@ export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id) && !(g.p
 function goodCampCards(g) {
   let villagers = 0;
   let gods = 0;
-  const tp = loversAlive(g) ? thirdParty(g) : [];
+  // 人狼恋: the couple and 丘比特 never count for the good camp, even after the couple is gone
+  const tp = thirdParty(g);
   for (const id of g.seats) {
     if (isWolfCamp(g, id) || tp.includes(id)) continue;
     g.hands[id].cards.slice(g.dead[id]).forEach(c => { if (c === 'villager') villagers++; else gods++; });
@@ -584,7 +585,7 @@ function checkWin(g) {
   const win = R(g).win;
   const tp = thirdParty(g);
   const tpAlive = tp.length > 0 && loversAlive(g);
-  if (tpAlive && alivePlayers(g).every(id => tp.includes(id))) { winner = 'love'; reason = '人狼恋：场上只剩情侣（和丘比特）'; }
+  if (tpAlive && alivePlayers(g).every(id => tp.includes(id))) { winner = 'love'; reason = '丘比特阵营：场上只剩情侣（和丘比特）'; }
   else if (tpAlive) { /* the couple must go before good or wolves can win */ }
   else if (s.wolves === 0) { winner = 'good'; reason = '所有狼牌都出局了'; }
   else if (R(g).peace === 'three' && g.peaceStreak >= 3) { winner = 'good'; reason = '连续三个平安夜'; }

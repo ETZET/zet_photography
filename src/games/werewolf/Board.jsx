@@ -309,10 +309,10 @@ function loveText(g, myId) {
   if (isLover(g, myId)) {
     const mate = partnerOf(g, myId);
     return { mate, line: tp.length
-      ? '你们一个是好人阵营、一个是狼人阵营（人狼恋），和丘比特一起变成第三方：要活到场上只剩你们自己人。'
+      ? '你们一个是好人阵营、一个是狼人阵营（人狼恋），和丘比特一起变成丘比特阵营：要活到场上只剩你们自己人。'
       : `你们都是${isWolfCamp(g, myId) ? '狼人' : '好人'}阵营，继续为本阵营赢。一人出局，另一人殉情。` };
   }
-  if (cupidOf(g) === myId) return { pair: g.lovers, line: tp.length ? '他们是人狼恋：你和这对情侣组成第三方，要活到只剩你们。' : '他们同阵营，你还是好人阵营。' };
+  if (cupidOf(g) === myId) return { pair: g.lovers, line: tp.length ? '他们是人狼恋：你和这对情侣组成丘比特阵营，要活到只剩你们。情侣殉情后你也不回好人阵营。' : '他们同阵营，你还是好人阵营。' };
   return null;
 }
 function LoversNote({ g, myId }) {
@@ -599,7 +599,7 @@ function EndPanel({ g, isHost, update, busy, confirm }) {
         <div key={id} className="flex items-center gap-2 flex-wrap">
           <Who id={id} tone={isWolfCamp(g, id) ? 'evil' : 'good'} />
           {isLover(g, id) && <PixelSprite name="heart" scale={2} title="情侣" />}
-          {thirdParty(g).includes(id) && <span className="px-tag pink">第三方</span>}
+          {thirdParty(g).includes(id) && <span className="px-tag pink">丘比特阵营</span>}
           {g.hands[id].cards.map((c, i) => (
             <span key={i} className={`px-tag ${ROLES[c].team === 'wolf' ? 'evil' : ROLES[c].god ? 'gold' : 'good'} ${i < g.dead[id] ? 'lost' : ''}`}>{ROLES[c].zh}{i < g.dead[id] ? ' ✕' : ''}</span>
           ))}
