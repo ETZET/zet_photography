@@ -1,0 +1,79 @@
+/* 掼蛋 — landscape phone table. The layer covers the whole viewport (site header
+   included) so the 27-card hand and the buttons always fit without scrolling. */
+.gd-team0 { background: #8c1d26 !important; color: #fff6dc !important; }
+.gd-team1 { background: #24398f !important; color: #fff6dc !important; }
+.gd-team0-text { color: #ff8a80; }
+.gd-team1-text { color: #8fb0ff; }
+
+.gd-layer { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; overflow: hidden;
+  height: 100vh; height: 100dvh;
+  padding: 4px max(8px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0.06), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0 2px, transparent 2px 4px),
+    #1c4a37;
+  color: var(--ink); font-size: 12px; }
+.gd-top { flex: none; height: 34px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; }
+.gd-icon { min-width: 30px; height: 28px; padding: 0 6px 2px; background: #0f2a1f; color: var(--ink); font-size: 14px; border: none; cursor: pointer;
+  box-shadow: 0 -2px 0 0 var(--line), 0 2px 0 0 var(--line), -2px 0 0 0 var(--line), 2px 0 0 0 var(--line), inset 0 0 0 2px #2e6b52; }
+.gd-icon.wide { font-size: 12px; }
+.gd-levels { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.gd-now { padding: 3px 6px 4px; background: var(--gold); color: #2a1a05; line-height: 1; }
+.gd-now b { font-weight: normal; font-size: 18px; margin-left: 2px; }
+.gd-lv { padding: 3px 5px 4px; line-height: 1; font-size: 12px; }
+
+.gd-mid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr minmax(170px, 1fr) 1fr; gap: 6px; align-items: center; }
+.gd-side { display: flex; align-items: center; gap: 6px; min-width: 0; height: 100%; }
+.gd-side:last-child { flex-direction: row-reverse; }
+.gd-center { height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 2px 0; }
+.gd-spot { position: relative; min-height: 36px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.gd-spot.lead .pc-row { filter: drop-shadow(0 0 0 #f5c542) drop-shadow(0 0 3px rgba(245,197,66,0.8)); }
+.gd-label { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; line-height: 1; padding: 2px 4px 3px; background: #0f2a1f; color: var(--ink); z-index: 20; }
+.gd-spot.lead .gd-label { background: var(--gold); color: #2a1a05; }
+.gd-label.bomb { background: var(--evil) !important; color: #fff6dc !important; }
+.gd-pass { font-size: 18px; color: #c7d8cf; padding: 2px 8px 4px; background: rgba(7,5,14,0.35); }
+.gd-status { min-height: 18px; text-align: center; font-size: 12px; line-height: 1.4; max-width: 100%; }
+.gd-side .gd-spot { flex: 1; min-width: 0; }
+
+.gd-seat { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 6px 5px; background: rgba(7,5,14,0.35); flex: none; }
+.gd-seat.top { flex-direction: row; padding: 2px 6px 3px; gap: 6px; }
+.gd-seat.turn { background: rgba(245,197,66,0.22); box-shadow: 0 -2px 0 0 var(--gold), 0 2px 0 0 var(--gold), -2px 0 0 0 var(--gold), 2px 0 0 0 var(--gold); }
+.gd-seat.out { opacity: 0.85; }
+.gd-seat .px-who { margin: 0; }
+.gd-turn { font-size: 12px; color: var(--gold); line-height: 1; }
+.gd-seat.top .gd-turn { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 3px; white-space: nowrap; }
+
+.gd-feedback { flex: none; height: 24px; display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.gd-me { flex: none; padding: 3px 6px 4px; line-height: 1; background: rgba(7,5,14,0.45); color: var(--dim); }
+.gd-me.on { background: var(--gold); color: #2a1a05; animation: px-glow 1.2s steps(2) infinite; }
+.gd-chip { padding: 3px 6px 4px; line-height: 1; font-size: 12px; background: #0f2a1f; color: var(--dim); border: none; cursor: pointer; box-shadow: 0 0 0 2px var(--line); }
+.gd-chip.on { background: var(--gold); color: #2a1a05; }
+
+.gd-bottom { flex: none; height: clamp(118px, 44vh, 210px); display: flex; gap: 8px; }
+.gd-hand { flex: 1; min-width: 0; position: relative; }
+.gd-actions { flex: none; width: 92px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; }
+.gd-act { width: calc(100% - 6px); margin: 3px; font-size: 18px; padding: 3px 4px 6px; line-height: 1.2; }
+.gd-act.big { font-size: 18px; padding: 8px 4px 11px; }
+.gd-act.sm { font-size: 12px; padding: 2px 4px 5px; }
+
+.gd-over { z-index: 50; background: rgba(7,5,14,0.82); }
+.gd-result { width: 100%; max-width: 600px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+.gd-panel { width: 100%; max-width: 680px; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+.gd-scroll { overflow-y: auto; min-height: 0; flex: 1; scrollbar-width: thin; }
+
+.gd-intro { position: absolute; inset: 0; z-index: 45; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(7,5,14,0.55); pointer-events: none; }
+.gd-deal { position: relative; width: 220px; height: 44px; }
+.gd-deal span { position: absolute; left: 95px; top: 0; animation: gd-deal 0.9s steps(6) both; }
+.gd-deal span:nth-child(4n+1) { --dx: -110px; --dy: 0; }
+.gd-deal span:nth-child(4n+2) { --dx: 110px; --dy: 0; }
+.gd-deal span:nth-child(4n+3) { --dx: 0; --dy: -40px; }
+.gd-deal span:nth-child(4n+4) { --dx: 0; --dy: 40px; }
+@keyframes gd-deal { from { transform: none; opacity: 1; } to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+
+.gd-rotate { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px;
+  background: #0e0a1c; }
+.gd-phone { width: 44px; height: 76px; background: #2b2150; box-shadow: 0 -4px 0 0 var(--line), 0 4px 0 0 var(--line), -4px 0 0 0 var(--line), 4px 0 0 0 var(--line), inset 0 0 0 4px #8fb0ff;
+  display: flex; align-items: center; justify-content: center; animation: gd-turn 2.4s steps(1) infinite; }
+.gd-phone span { width: 24px; height: 48px; background: repeating-linear-gradient(0deg, #1c4a37 0 6px, #24604a 6px 12px); }
+@keyframes gd-turn { 0%, 40% { transform: none; } 50%, 90% { transform: rotate(90deg); } }
+@media (prefers-reduced-motion: reduce) { .gd-phone, .gd-deal span, .gd-me.on { animation: none; } }

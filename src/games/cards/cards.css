@@ -1,0 +1,30 @@
+/* Pixel playing cards (shared by card games). Square corners, 2px "pixel"
+   outlines built from box-shadows, like the rest of the games theme. */
+.pc { position: relative; flex: none; background: #fff6dc; color: #2f2a3d; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  box-shadow: 0 -2px 0 0 #170f22, 0 2px 0 0 #170f22, -2px 0 0 0 #170f22, 2px 0 0 0 #170f22, inset -2px -2px 0 0 #e2d2ac; cursor: pointer; }
+.pc.red { color: #d63c34; }
+.pc-corner { position: absolute; left: 2px; top: 2px; display: flex; flex-direction: column; align-items: center; min-width: 16px; font-size: 12px; line-height: 12px; }
+.pc-corner b { font-weight: normal; }
+.pc-corner b.ten { letter-spacing: -2px; margin-left: -2px; }
+.pc-corner i { font-style: normal; font-size: 12px; line-height: 12px; }
+.pc-pip { position: absolute; right: 4px; bottom: 2px; line-height: 1; opacity: 0.9; }
+.pc.joker .pc-corner { font-size: 12px; }
+.pc.joker.black .pc-pip { color: #4e4860; }
+.pc.joker.red .pc-pip { color: #f0b432; text-shadow: 1px 1px 0 #a8701a; }
+.pc.level { background: #fff0b8; }
+.pc.level .pc-corner { background: #ffe07a; }
+.pc.wild { background: #ffe07a; box-shadow: 0 -2px 0 0 #170f22, 0 2px 0 0 #170f22, -2px 0 0 0 #170f22, 2px 0 0 0 #170f22, inset 0 0 0 2px #f0b432; }
+.pc.wild .pc-corner { background: #f5c542; }
+.pc-badge { position: absolute; left: 2px; bottom: 2px; font-size: 12px; line-height: 12px; padding: 1px 2px; background: #d63c34; color: #fff6dc; }
+.pc.sel { background: #a9d4ff; transform: translateY(-5px); box-shadow: 0 -2px 0 0 #170f22, 0 2px 0 0 #170f22, -2px 0 0 0 #170f22, 2px 0 0 0 #170f22, inset 0 0 0 2px #3c66d8; }
+.pc.sel .pc-corner { background: #7fb0ff; }
+.pc.dim { filter: brightness(0.55) saturate(0.6); cursor: default; }
+.pc-back { position: relative; flex: none; display: flex; align-items: center; justify-content: center;
+  background: repeating-linear-gradient(45deg, #8c1d26 0 4px, #b8323a 4px 8px);
+  box-shadow: 0 -2px 0 0 #170f22, 0 2px 0 0 #170f22, -2px 0 0 0 #170f22, 2px 0 0 0 #170f22, inset 0 0 0 2px #ff8a80; }
+.pc-back span { font-size: 12px; line-height: 1; padding: 2px 3px 3px; background: #170f22; color: #fff6dc; }
+.pc-back.warn span { background: #f5c542; color: #2a1a05; }
+.pc-row { position: relative; flex: none; }
+.pc-hand { position: relative; width: 100%; height: 100%; touch-action: none; overflow: visible; }
+.pc-hand .pc { transition: transform 0.08s steps(2); }
+@media (prefers-reduced-motion: reduce) { .pc-hand .pc { transition: none; } }
