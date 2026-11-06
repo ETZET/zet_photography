@@ -7,6 +7,7 @@ import { roomStore, getPlayerId } from '../avalon/roomStore';
 import { useRoute, navigate } from '../../route';
 import { keepHostFirst } from './seats';
 import { PlayersProvider, ConfirmProvider, ConfirmOutlet, useConfirm } from '../avalon/ui';
+import Narrator from './Narrator';
 import { NAME_MAX_UNITS, clampName, nameUnits, uniqueName } from '../avalon/names';
 
 export { GAME_TITLES } from '../registry';
@@ -111,6 +112,9 @@ function RoomInner({ spec, onExit }) {
         {inRoom && (
           <div className="flex items-center gap-2">
             <span className="fs-12 c-dim hidden sm:inline">房间</span>
+            {spec.narrate && (
+              <Narrator narrate={spec.narrate} room={room} myId={myId} update={update} />
+            )}
             <span className="fs-24 c-gold tracking-[0.2em]" data-testid="room-code">{room.code}</span>
             <button className="px-btn dark sm" onClick={leave} data-testid="leave">离开</button>
           </div>

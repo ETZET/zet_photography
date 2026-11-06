@@ -2,6 +2,7 @@ import './portraits';
 import './onenight.css';
 import { Portrait } from '../pixel/PixelSprite';
 import RoomGame from '../room/RoomGame';
+import { narrate } from './narrate';
 import { MAX_PLAYERS, defaultConfig } from './onenightRules';
 import Lobby from './Lobby';
 import Board from './Board';
@@ -24,6 +25,7 @@ const SPEC = {
   ],
   newRoom: () => ({ config: defaultConfig() }),
   Lobby, Board, useBots,
+  narrate,
 };
 
 export default function OnenightGame({ onExit }) {

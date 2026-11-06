@@ -1,5 +1,6 @@
 import { Portrait } from '../pixel/PixelSprite';
 import RoomGame from '../room/RoomGame';
+import { narrate } from './narrate';
 import { MAX_PLAYERS, defaultConfig } from './wolfRules';
 import Lobby from './Lobby';
 import Board from './Board';
@@ -17,6 +18,7 @@ const SPEC = {
   howTo: ['起个名字，创建房间，把链接发给朋友', '人齐 5–10 人，房主发牌，每人 2 张身份牌', '自己排好两张牌的顺序：两张牌就是两条命', '手机当法官：夜里按提示行动，白天讨论投票'],
   newRoom: () => ({ config: defaultConfig() }),
   Lobby, Board, useBots,
+  narrate,
 };
 
 export default function WerewolfGame({ onExit }) {

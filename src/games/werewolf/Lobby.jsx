@@ -160,7 +160,7 @@ export default function Lobby({ room, myId, update, busy }) {
                   <span className="flex flex-col gap-1 w-full">
                     <span className="flex justify-between gap-2">
                       <span>{on ? '● ' : '○ '}{p.zh}</span>
-                      {pb && <span className={`fs-12 ${pb.level === 'ok' ? 'c-dim' : 'c-evil'}`}>好人胜率 ≈{pb.good}%{pb.level !== 'ok' ? ' ⚠' : ''}</span>}
+                      {pb && <span className={`fs-12 ${pb.level === 'ok' ? 'c-dim' : 'c-evil'}`}>好人胜率 ≈{pb.good}%{pb.level !== 'ok' && <PixelSprite name="warn" scale={2} className="inline-block align-[-2px] ml-1" />}</span>}
                     </span>
                     <span className="fs-12 c-dim">{p.desc}</span>
                     {off && <span className="fs-12 c-evil">{tableN} 人时{pb.good > 50 ? '偏好人' : '偏狼人'}，换个人数或板子更好</span>}
@@ -367,7 +367,7 @@ function BalanceBar({ bal, auto }) {
       <div className="px-balance" aria-hidden><i style={{ width: `${good}%` }} /></div>
       {level !== 'ok' && (
         <div className={`px-tag ${level === 'extreme' ? 'evil' : 'gold'} fs-12 mt-2 block`} data-testid="balance-warning">
-          ⚠ {level === 'extreme' ? `这个配置非常不平衡，${side}几乎必胜。` : `这个配置明显偏${side}。`}
+          <PixelSprite name="warn" scale={2} className="inline-block align-[-2px] mr-1" />{level === 'extreme' ? `这个配置非常不平衡，${side}几乎必胜。` : `这个配置明显偏${side}。`}
           {bal.rec ? '这套规则在这个人数下怎么配牌都很难配平，建议换一个板子。' : '建议选一个上面的常用板子。'}
         </div>
       )}

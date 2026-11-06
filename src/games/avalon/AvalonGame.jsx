@@ -1,5 +1,6 @@
 import { Portrait } from '../pixel/PixelSprite';
 import RoomGame from '../room/RoomGame';
+import { narrate } from './narrate';
 import { MAX_PLAYERS, defaultConfig } from './avalonRules';
 import Lobby from './Lobby';
 import Board from './Board';
@@ -17,6 +18,7 @@ const SPEC = {
   howTo: ['起个名字，创建房间', '把邀请链接发给朋友', '人齐 5–10 人，房主开局', '每人用自己的手机看身份、投票、出任务牌'],
   newRoom: () => ({ config: defaultConfig(5) }),
   Lobby, Board, useBots,
+  narrate,
 };
 
 export default function AvalonGame({ onExit }) {

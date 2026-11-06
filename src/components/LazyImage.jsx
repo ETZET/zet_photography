@@ -54,7 +54,7 @@ const LazyImage = ({ src, alt, onClick, useThumbnail = false }) => {
         style={onClick ? { cursor: 'pointer' } : undefined}
       >
         <div className="text-center">
-          <div>⚠️ Error loading image</div>
+          <div>Error loading image</div>
           <div className="text-xs mt-1">{error?.message || 'Unknown error'}</div>
         </div>
       </div>

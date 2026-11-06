@@ -223,7 +223,7 @@ function Seat({ g, s, room, where }) {
           ? <span className="px-tag gold" data-testid="place">{PLACE_ZH[g.finished.indexOf(s)]}</span>
           : <CardBack w={where === 'top' ? 16 : 22} count={count} warn={n <= 10} />}
         {g.jiefeng === s && <span className="px-tag good">接风</span>}
-        {isBot && <span className="fs-12 c-mute">🤖</span>}
+        {isBot && <span className="fs-12 c-mute">机器人</span>}
       </div>
       {turn && <span className="gd-turn px-blink">{g.step === 'tribute' ? '贡牌中' : '出牌中'}</span>}
     </div>

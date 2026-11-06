@@ -49,6 +49,42 @@ export const SPRITES = {
     'kYYYYYYYYYk',
     'kkkkkkkkkkk',
   ],
+  // 夜晚语音 button: a speaker, off (grey) and on (gold sound waves)
+  speaker: [
+    '....kk..',
+    '...kmk..',
+    'kkkmmk..',
+    'kmmmmk..',
+    'kmmmmk..',
+    'kmmmmk..',
+    'kmmmmk..',
+    'kkkmmk..',
+    '...kmk..',
+    '....kk..',
+  ],
+  speakerOn: [
+    '....kk........',
+    '...kwk.....y..',
+    'kkkwwk..y...y.',
+    'kwwwwk...y...y',
+    'kwwwwk...y...y',
+    'kwwwwk...y...y',
+    'kwwwwk...y...y',
+    'kkkwwk..y...y.',
+    '...kwk.....y..',
+    '....kk........',
+  ],
+  // warning mark for balance / deck notes
+  warn: [
+    '...kk...',
+    '..kyyk..',
+    '..ykky..',
+    '.yykkyy.',
+    '.yykkyy.',
+    'yyyyyyyy',
+    'yyykkyyy',
+    'yyyyyyyy',
+  ],
   // 丘比特 / lovers token: a pink heart
   heart: [
     '.kk..kk.',

@@ -152,8 +152,8 @@ export default function Lobby({ room, myId, update, busy }) {
           <div className="fs-12 c-dim mt-3 leading-loose" data-testid="deck">本局 {d.cards.length} 张：<DeckLine deck={d.cards} /></div>
           {(d.error || d.warn.length > 0) && (
             <div className="flex flex-col items-start gap-2 mt-2">
-              {d.error && <div className="px-tag evil fs-12 leading-relaxed" data-testid="deck-error">⚠ {d.error}</div>}
-              {d.warn.map(w => <div key={w} className="px-tag gold fs-12 leading-relaxed" data-testid="deck-warn">⚠ {w}</div>)}
+              {d.error && <div className="px-tag evil fs-12 leading-relaxed" data-testid="deck-error"><PixelSprite name="warn" scale={2} className="inline-block align-[-2px] mr-1" />{d.error}</div>}
+              {d.warn.map(w => <div key={w} className="px-tag gold fs-12 leading-relaxed" data-testid="deck-warn"><PixelSprite name="warn" scale={2} className="inline-block align-[-2px] mr-1" />{w}</div>)}
             </div>
           )}
           <button className="underline fs-12 c-dim mt-3 block" onClick={() => setShowRules(v => !v)} data-testid="toggle-rules">
