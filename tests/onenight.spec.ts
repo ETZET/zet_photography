@@ -62,7 +62,7 @@ test('一夜狼 full game on phones', async ({ browser }) => {
 
   // DIY: a wrong-size deck blocks the start; every phone sees the change
   await host.getByTestId('toggle-diy').click();
-  await host.getByTestId('plus-hunter').click();
+  await host.getByTestId('role-hunter').click();
   await settle(pages);
   await expect(host.getByTestId('deck-error')).toBeVisible();
   await expect(host.getByTestId('start-game')).toBeDisabled();

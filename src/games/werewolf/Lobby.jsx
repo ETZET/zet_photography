@@ -11,6 +11,7 @@ import {
   isBabyWin, jglPossible, JGL_BLURB,
 } from './wolfRules';
 import { addBot } from './bots';
+import PlanPicker, { previewCount, planMismatch } from '../room/PlanPicker';
 
 const IS_DEV = import.meta.env.DEV;
 const inviteLink = code => roomLink('werewolf', code);
@@ -29,14 +30,12 @@ export default function Lobby({ room, myId, update, busy }) {
   const isHost = room.hostId === myId;
   const n = room.players.length;
   // the host can preview a planned head count before everyone has joined
-  const plan = room.plan || null;
-  const tableN = Math.min(Math.max(plan ?? n, MIN_PLAYERS), MAX_PLAYERS);
+  const tableN = previewCount(room, MIN_PLAYERS, MAX_PLAYERS);
   const cfg = effectiveConfig(tableN, room.config);
   const deck = buildDeck(tableN, cfg);
   const missing = Math.max(0, MIN_PLAYERS - n);
   // what a start right now would actually deal (the real head count)
   const realDeck = n >= MIN_PLAYERS ? buildDeck(n, effectiveConfig(n, room.config)) : null;
-  const setPlan = v => isHost && update(r => { r.plan = v; return r; });
   const bal = deck.error ? null : balanceOf(tableN, cfg);
   const [copied, setCopied] = useState(false);
   const [showRules, setShowRules] = useState(false);
@@ -80,11 +79,8 @@ export default function Lobby({ room, myId, update, busy }) {
     if (ok) update(r => { r.players = r.players.filter(p => p.id !== id); return r; });
   };
   const start = async () => {
-    if (plan && plan !== n && !await confirm({
-      title: '人数和预计的不一样',
-      body: <>预计 {plan} 人，现在 {n} 人。开局会按 <b>{n} 人</b>的推荐配置配牌{cfg.auto === false ? '（自定义牌组照用）' : ''}。</>,
-      ok: `按 ${n} 人开局`, cancel: '再等等',
-    })) return;
+    const mismatch = planMismatch(room);
+    if (mismatch && !await confirm(mismatch)) return;
     if (bal?.level === 'extreme' && !await confirm({
       title: '配置非常不平衡',
       body: <>模拟估算好人胜率{bal.good > 50 ? '高达' : '只有'}约 <b>{bal.approx ? '<10' : bal.good}%</b>{bal.good > 50 ? '（好人几乎必胜）' : '（狼人几乎必胜）'}。<div className="fs-12 c-dim mt-2">{bal.rec ? '这套规则在这个人数下很难配平，可以换一个板子。' : '可以选一个常用板子，牌组是调好的。'}确定还是用这个配置开局吗？</div></>,
@@ -152,7 +148,7 @@ export default function Lobby({ room, myId, update, busy }) {
       <div className="flex flex-col gap-6">
         <div className="px-frame pad" data-testid="presets">
           <div className="px-title">{isHost ? '选择板子' : '本局板子'} · {tableN} 人</div>
-          <PlanPicker plan={plan} n={n} isHost={isHost} setPlan={setPlan} />
+          <PlanPicker room={room} min={MIN_PLAYERS} max={MAX_PLAYERS} isHost={isHost} update={update} />
           {!isHost && <div className="fs-12 c-dim mb-2">由房主选择</div>}
           <div className="flex flex-col">
             {PRESETS.map(p => {
@@ -292,26 +288,6 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
 }
 
 /** 丘比特模式: a special mode with its own big card, like Avalon's 湖中仙女. */
-function PlanPicker({ plan, n, isHost, setPlan }) {
-  const counts = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, i) => MIN_PLAYERS + i);
-  const note = plan
-    ? (plan === n ? `人到齐了：${n} 人。` : `预计 ${plan} 人，现在 ${n} 人。下面的推荐按 ${plan} 人显示，开局按实际人数配牌。`)
-    : n < MIN_PLAYERS ? `现在 ${n} 人，按 ${MIN_PLAYERS} 人预览。` : '跟着房间里的实际人数走。';
-  if (!isHost) return plan ? <div className="fs-12 c-dim mb-3" data-testid="plan-note">房主预计 {plan} 人，现在 {n} 人。</div> : null;
-  return (
-    <div className="mb-3" data-testid="plan">
-      <div className="fs-12 mb-1">预计人数</div>
-      <div className="px-seg" role="radiogroup" aria-label="预计人数">
-        <button role="radio" aria-checked={!plan} className={!plan ? 'on' : ''} onClick={() => setPlan(null)} data-testid="plan-auto">自动</button>
-        {counts.map(c => (
-          <button key={c} role="radio" aria-checked={plan === c} className={plan === c ? 'on' : ''} onClick={() => setPlan(c)} data-testid={`plan-${c}`}>{c}</button>
-        ))}
-      </div>
-      <div className="fs-12 c-dim mt-1" data-testid="plan-note">{note}</div>
-    </div>
-  );
-}
-
 function CupidMode({ rules, n, isHost, update }) {
   const on = rules.cupid === 'yes';
   const tooFew = n < CUPID_MIN;

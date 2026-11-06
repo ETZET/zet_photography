@@ -10,6 +10,7 @@ import {
 } from './onenightRules';
 import { addBot } from './bots';
 import { DeckLine, teamText } from './ui';
+import PlanPicker, { previewCount, planMismatch } from '../room/PlanPicker';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -18,8 +19,10 @@ export default function Lobby({ room, myId, update, busy }) {
   const isHost = room.hostId === myId;
   const n = room.players.length;
   const cfg = { ...room.config, rules: { ...DEFAULT_RULES, ...(room.config?.rules || {}) } };
-  const d = deckFor(n, cfg);
+  const d = deckFor(previewCount(room, MIN_PLAYERS, MAX_PLAYERS), cfg);
   const tableN = d.tableN;
+  // what a start right now would actually deal (the real head count)
+  const real = n >= MIN_PLAYERS ? deckFor(n, cfg) : null;
   const missing = Math.max(0, MIN_PLAYERS - n);
   const counts = countsOf(d.cards);
   const [copied, setCopied] = useState(false);
@@ -33,7 +36,7 @@ export default function Lobby({ room, myId, update, busy }) {
   };
   const pickBoard = id => isHost && update(r => { r.config = { ...r.config, board: id, counts: null }; return r; });
   const bump = (id, delta) => isHost && update(r => {
-    const cur = countsOf(deckFor(r.players.length, r.config).cards);
+    const cur = countsOf(deckFor(previewCount(r, MIN_PLAYERS, MAX_PLAYERS), r.config).cards);
     const step = ROLES[id].pair ? 2 : 1;
     cur[id] = Math.max(0, Math.min(ROLES[id].max, (cur[id] || 0) + delta * step));
     r.config = { ...r.config, board: 'custom', counts: cur };
@@ -63,6 +66,8 @@ export default function Lobby({ room, myId, update, busy }) {
     if (ok) update(r => { r.players = r.players.filter(p => p.id !== id); return r; });
   };
   const start = async () => {
+    const mismatch = planMismatch(room);
+    if (mismatch && !await confirm(mismatch)) return;
     if (d.warn.length && !await confirm({ title: '这副牌有点怪', body: <ul className="flex flex-col gap-1">{d.warn.map(w => <li key={w}>· {w}</li>)}</ul>, ok: '仍然开局', cancel: '回去调整', tone: 'danger' })) return;
     update(r => {
       const timeScale = window.__onTimeScale ?? (IS_LOCAL ? 0.15 : 1);
@@ -125,7 +130,7 @@ export default function Lobby({ room, myId, update, busy }) {
       <div className="flex flex-col gap-6">
         <div className="px-frame pad" data-testid="presets">
           <div className="px-title">{isHost ? '选择牌组' : '本局牌组'} · {tableN} 人 {tableN + 3} 张</div>
-          {n < MIN_PLAYERS && <div className="fs-12 c-mute mb-2">按 {tableN} 人预览</div>}
+          <PlanPicker room={room} min={MIN_PLAYERS} max={MAX_PLAYERS} isHost={isHost} update={update} />
           {!isHost && <div className="fs-12 c-dim mb-2">由房主选择</div>}
           <div className="flex flex-col">
             {BOARDS.filter(b => isHost || cfg.board === b.id).map(b => {
@@ -150,6 +155,7 @@ export default function Lobby({ room, myId, update, busy }) {
             )}
           </div>
           <div className="fs-12 c-dim mt-3 leading-loose" data-testid="deck">本局 {d.cards.length} 张：<DeckLine deck={d.cards} /></div>
+          {!d.error && real?.error && <div className="px-tag evil fs-12 leading-relaxed mt-2" data-testid="real-deck-error">现在 {n} 人还开不了：{real.error}</div>}
           {(d.error || d.warn.length > 0) && (
             <div className="flex flex-col items-start gap-2 mt-2">
               {d.error && <div className="px-tag evil fs-12 leading-relaxed" data-testid="deck-error"><PixelSprite name="warn" scale={2} className="inline-block align-[-2px] mr-1" />{d.error}</div>}
@@ -168,23 +174,42 @@ export default function Lobby({ room, myId, update, busy }) {
             <span className="fs-12 c-mute">{diy ? '收起' : '加减角色牌'}</span>
           </button>
           {diy && <div className="mt-4">
-            <div className={`fs-12 mb-2 ${d.cards.length === d.need ? 'c-dim' : 'c-evil'}`} data-testid="deck-count">
+            <div className={`fs-12 mb-1 ${d.cards.length === d.need ? 'c-dim' : 'c-evil'}`} data-testid="deck-count">
               牌数 {d.cards.length} / 需要 {d.need}（{tableN} 人 + 3 张公共牌）
             </div>
+            <div className="fs-12 c-mute mb-2">点角色加入或去掉；狼人、村民最多各 3 张，双子两张一起。</div>
             <div className="on-rolegrid">
               {ROLE_IDS.map(id => {
                 const c = counts[id] || 0;
-                const team = ROLES[id].team;
+                const role = ROLES[id];
+                const team = role.team;
+                // 狼人 / 村民 can be stacked; every other role is in or out (双子 always as a pair)
+                const multi = role.max > 1 && !role.pair;
+                const cls = `px-role ${team === 'wolf' ? 'wolf' : team === 'loner' ? 'loner' : 'good'} ${c ? 'on' : ''}`;
+                const label = (
+                  <>
+                    <Portrait role={role.sprite} scale={1.25} />
+                    <span className={`fs-12 ${c ? teamText(id) : ''}`}>{role.zh}{multi && c ? ` ×${c}` : role.pair ? ' ×2' : ''}</span>
+                  </>
+                );
+                if (!multi) {
+                  return (
+                    <button key={id} className={cls} title={ROLE_BLURB[id]} disabled={!isHost} aria-pressed={!!c}
+                      onClick={() => bump(id, c ? -1 : 1)} data-testid={`role-${id}`}>
+                      {label}
+                      <span className={`fs-12 ${c ? 'c-gold' : 'c-mute'}`} data-testid={`state-${id}`}>{c ? '● 加入' : '○ 不用'}</span>
+                    </button>
+                  );
+                }
                 return (
-                  <div key={id} className={`px-role ${team === 'wolf' ? 'wolf' : team === 'loner' ? 'loner' : 'good'} ${c ? 'on' : ''}`} title={ROLE_BLURB[id]} data-testid={`role-${id}`}>
-                    <Portrait role={ROLES[id].sprite} scale={1.25} />
-                    <span className={`fs-12 ${c ? teamText(id) : ''}`}>{ROLES[id].zh}{c ? ` ×${c}` : ''}</span>
-                    {isHost && (
+                  <div key={id} className={cls} title={ROLE_BLURB[id]} data-testid={`role-${id}`}>
+                    {label}
+                    {isHost ? (
                       <span className="on-step">
-                        <button className="px-btn dark" disabled={!c} onClick={() => bump(id, -1)} aria-label={`减少${ROLES[id].zh}`} data-testid={`minus-${id}`}>－</button>
-                        <button className="px-btn dark" disabled={c >= ROLES[id].max} onClick={() => bump(id, 1)} aria-label={`增加${ROLES[id].zh}`} data-testid={`plus-${id}`}>＋</button>
+                        <button className="px-btn dark" disabled={!c} onClick={() => bump(id, -1)} aria-label={`减少${role.zh}`} data-testid={`minus-${id}`}>－</button>
+                        <button className="px-btn dark" disabled={c >= role.max} onClick={() => bump(id, 1)} aria-label={`增加${role.zh}`} data-testid={`plus-${id}`}>＋</button>
                       </span>
-                    )}
+                    ) : <span className="fs-12 c-mute">最多 {role.max}</span>}
                   </div>
                 );
               })}
@@ -196,8 +221,8 @@ export default function Lobby({ room, myId, update, busy }) {
 
         {isHost ? (
           <div className="px-sticky-cta">
-            <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!d.error} onClick={start} data-testid="start-game">
-              {missing > 0 ? `还差 ${missing} 人` : d.error ? '牌数不对' : `发牌开局 · ${cfg.counts ? '自定义' : boardName}`}
+            <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!d.error || !!real?.error} onClick={start} data-testid="start-game">
+              {missing > 0 ? `还差 ${missing} 人` : d.error || real?.error ? '牌数不对' : `发牌开局 · ${cfg.counts ? '自定义' : boardName}`}
             </button>
           </div>
         ) : (

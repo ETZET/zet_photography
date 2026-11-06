@@ -8,6 +8,7 @@ import {
 import { roomLink } from '../../route';
 import { Who, useConfirm } from './ui';
 import { addBot } from './bots';
+import PlanPicker, { previewCount, planMismatch } from '../room/PlanPicker';
 
 const IS_DEV = import.meta.env.DEV;
 const inviteLink = code => roomLink('avalon', code);
@@ -16,8 +17,10 @@ export default function Lobby({ room, myId, update, busy }) {
   const confirm = useConfirm();
   const isHost = room.hostId === myId;
   const n = room.players.length;
-  const tableN = Math.min(Math.max(n, MIN_PLAYERS), MAX_PLAYERS);
+  const tableN = previewCount(room, MIN_PLAYERS, MAX_PLAYERS);
   const cfg = effectiveConfig(tableN, room.config);
+  // what a start right now would actually deal (the real head count)
+  const realBuilt = n >= MIN_PLAYERS ? buildRoleList(n, effectiveConfig(n, room.config)) : null;
   const auto = !!room.config.auto;
   const [showTable, setShowTable] = useState(false);
   const built = buildRoleList(tableN, cfg);
@@ -41,7 +44,12 @@ export default function Lobby({ room, myId, update, busy }) {
     const ok = await confirm({ title: '移出房间', body: <>确定把 <Who id={id} /> 移出房间吗？</>, ok: '移出', tone: 'danger' });
     if (ok) update(r => { r.players = r.players.filter(p => p.id !== id); return r; });
   };
-  const start = () => update(r => {
+  const start = async () => {
+    const mismatch = planMismatch(room);
+    if (mismatch && !await confirm(mismatch)) return;
+    doStart();
+  };
+  const doStart = () => update(r => {
     r.game = newGame(r.players, effectiveConfig(r.players.length, r.config));
     r.phase = 'game';
     r.round = (r.round || 0) + 1;
@@ -81,11 +89,11 @@ export default function Lobby({ room, myId, update, busy }) {
 
       <div className="flex flex-col gap-6">
         <div className="px-frame pad">
-          <div className="px-title">角色配置</div>
+          <div className="px-title">角色配置 · {tableN} 人</div>
+          <PlanPicker room={room} min={MIN_PLAYERS} max={MAX_PLAYERS} isHost={isHost} update={update} />
           <div className="flex flex-wrap items-center gap-2 mb-4 fs-12">
             <span className="px-tag good">好人 {tableN - EVIL_COUNT[tableN]}</span>
             <span className="px-tag evil">坏人 {EVIL_COUNT[tableN]}</span>
-            {n < MIN_PLAYERS && <span className="c-mute">按 {tableN} 人预览</span>}
             <span className="flex-1" />
             {auto
               ? <span className="px-tag" data-testid="auto-tag">★ {tableN} 人推荐</span>
@@ -116,6 +124,7 @@ export default function Lobby({ room, myId, update, busy }) {
             </div>
           )}
           {built.error && <div className="px-tag evil fs-12 mt-3">{built.error}</div>}
+          {!built.error && realBuilt?.error && <div className="px-tag evil fs-12 mt-3" data-testid="real-deck-error">现在 {n} 人还开不了：{realBuilt.error}</div>}
           <div className="fs-12 c-mute mt-3">
             {auto ? '人数变化时自动切换推荐配置；点任一角色可自定义。' : '已自定义，人数变化不会自动调整。'}
             <button className="underline ml-2 c-dim" onClick={() => setShowTable(v => !v)} data-testid="toggle-rec-table">
@@ -159,7 +168,7 @@ export default function Lobby({ room, myId, update, busy }) {
         </div>
 
         {isHost ? (
-          <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!built.error} onClick={start} data-testid="start-game">
+          <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!built.error || !!realBuilt?.error} onClick={start} data-testid="start-game">
             {missing > 0 ? `还差 ${missing} 人` : '开始游戏'}
           </button>
         ) : (
