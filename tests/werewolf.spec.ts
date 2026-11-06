@@ -71,6 +71,7 @@ const nightWolf = (g: G, id: string) => (g.rules.wake === 'all'
 const voters = (g: G) => alive(g).filter(id => !(g.rules.mute === 'yes' && (g.muted || []).includes(id)));
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
+test.use({ actionTimeout: 15_000 });
 test('双身份狼人 full game on phones', async ({ browser }) => {
   test.setTimeout(420_000);
   fs.mkdirSync(OUT, { recursive: true });
@@ -83,6 +84,7 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   const pages: Page[] = [];
   for (let i = 0; i < NAMES.length; i++) pages.push(await (shared || await browser.newContext(phone)).newPage());
   const host = pages[0];
+  await host.addInitScript(() => { (window as any).__wwTimeScale = 0.03; });
 
   await host.goto(`/game/werewolf${REMOTE ? '' : '?local=1'}`);
   await expect(host.getByText('双身份狼人').first()).toBeVisible();
@@ -116,7 +118,7 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
 
   // DIY: an absurd deck triggers the balance warning
   await host.getByTestId('toggle-diy').click();
-  for (let i = 0; i < 3; i++) await host.getByTestId('wolf-plus').click();
+  for (let i = 0; i < 2; i++) await host.getByTestId('wolf-plus').click();
   await settle(pages);
   await expect(host.getByTestId('balance-warning').first()).toBeVisible();
   await expect(host.getByTestId('preset-custom')).toBeVisible();
@@ -150,6 +152,9 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   // 金宝宝 (two villager cards) see each other from the start
   const baby = g.seats.find(id => g.hands[id].cards.every(c => c === 'villager'));
   expect(baby).toBeTruthy();
+  // cards are covered until you press and hold
+  await expect(pageOf(baby!).getByTestId('baby-mates')).toHaveCount(0);
+  await pageOf(baby!).getByTestId('arrange-peek').dispatchEvent('pointerdown');
   await expect(pageOf(baby!).getByTestId('baby-mates')).toBeVisible();
   await pageOf(baby!).getByTestId('baby-mates').scrollIntoViewIfNeeded();
   await snap(pageOf(baby!), 'arrange-baby');
@@ -166,7 +171,7 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
   for (let guard = 0; guard < 80; guard++) {
     g = await readGame(host);
     if (g.step === 'end') break;
-    if (g.step !== 'day' && g.step !== 'hunter') await Promise.all(pages.map(dismiss));
+    if (g.step !== 'day' && g.step !== 'confirm') await Promise.all(pages.map(dismiss));
 
     if (g.step === 'night') {
       const sleeper = alive(g).find(id => !nightWolf(g, id) && !['guard', 'seer'].includes(active(g, id)!));
@@ -201,6 +206,7 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
       continue;
     }
 
+    if (g.step === 'witch' && (g.acts as any).witchDone) { await host.waitForTimeout(300); continue; } // dawn is clock-driven
     if (g.step === 'witch') {
       const w = alive(g).find(id => active(g, id) === 'witch')!;
       const p = pageOf(w);
@@ -212,12 +218,39 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
         await snap(p, 'night-witch-poison');
         await p.getByTestId('witch-poison-go').click();
       } else await p.getByTestId('witch-skip').click();
-      await snapDawn(host);
       await settle(pages);
       continue;
     }
 
-    if (g.step === 'day' || g.step === 'hunter') {
+    if (g.step === 'confirm') {
+      await snapDawn(host);
+      const c = (g as any).confirm as { ids: string[]; acked: Record<string, string | null>; hunter: string | null };
+      for (const id of c.ids.filter(x => !(x in c.acked))) {
+        const p = pageOf(id);
+        await dismiss(p);
+        if (c.hunter === id) {
+          await tap(p, pick(alive(g).filter(x => x !== id)));
+          await snap(p, 'hunter');
+          await p.getByTestId('hunter-shoot').click();
+          await p.getByTestId('confirm-ok').click();
+        } else {
+          await snap(p, 'lost-life');
+          await p.getByTestId('ack-loss').click();
+        }
+        await settle(pages);
+      }
+      continue;
+    }
+
+    if (g.step === 'dusk') {
+      await Promise.all(pages.map(dismiss));
+      await snap(host, 'dusk');
+      await host.getByTestId('nightfall').click();
+      await settle(pages);
+      continue;
+    }
+
+    if (g.step === 'day') {
       const viewer = host;
       for (const p of pages) if (p !== viewer) for (const id of ['close-vote', 'close-seer']) await p.getByTestId(id).click({ timeout: 500 }).catch(() => {});
       await viewer.getByTestId('close-vote').click({ timeout: 500 }).catch(() => {});
@@ -227,15 +260,9 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
         await snap(viewer, `dawn-${g.night}`);
       }
       await Promise.all(pages.map(dismiss));
-      if (g.step === 'hunter') {
-        const p = pageOf(g.hunter!.id);
-        await tap(p, pick(alive(g).filter(id => id !== g.hunter!.id)));
-        await snap(p, 'hunter');
-        await p.getByTestId('hunter-shoot').click();
-        await p.getByTestId('confirm-ok').click();
-        await settle(pages);
-        continue;
-      }
+      // first speaker passes the turn once, then the host opens the vote
+      const spk = (g as any).speak?.order[(g as any).speak.at];
+      if (spk && g.dead[spk] < 2) { await pageOf(spk).getByTestId('speak-done').click(); await settle(pages); }
       await snap(host, 'day');
       await host.getByTestId('start-vote').click();
       await settle(pages);
@@ -244,12 +271,14 @@ test('双身份狼人 full game on phones', async ({ browser }) => {
 
     if (g.step === 'vote') {
       // the village gangs up on someone in the wolf camp so the game moves along
-      const suspect = pick(alive(g).filter(id => wolfCamp(g, id)));
+      const pk: string[] = (g as any).pk || [];
+      const cands = pk.length ? pk : alive(g);
+      const suspect = pick(cands.filter(id => wolfCamp(g, id))) || pick(cands);
       await expect(host.getByTestId('house-rules')).toBeVisible();
-      for (const [i, v] of voters(g).entries()) {
+      for (const [i, v] of voters(g).filter(v => !pk.includes(v)).entries()) {
         const p = pageOf(v);
         await dismiss(p);
-        const t = v === suspect ? pick(alive(g).filter(x => x !== v)) : suspect;
+        const t = v === suspect ? pick(cands.filter(x => x !== v)) : suspect;
         await tap(p, t);
         if (i === 2) await snap(p, 'vote');
         await p.getByTestId('vote-go').click();

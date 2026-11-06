@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import {
   MAX_PLAYERS, activeCard, alivePlayers, isWolfCamp, isNightWolf, voters, canSelfSave, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
-  hunterShoot, castVote,
+  ackLoss, castVote, candidates, speakerNow, nextSpeaker,
 } from './wolfRules';
 
 const IS_DEV = import.meta.env.DEV;
@@ -48,21 +48,28 @@ export function botStep(room) {
     }
     case 'witch': {
       const b = g.seats.find(id => isBot(id) && role(id) === 'witch');
-      if (!b) return false;
-      if (g.potions.save && g.acts.kill && (g.acts.kill !== b || canSelfSave(g)) && Math.random() < 0.5) witchAct(g, b, { save: true });
+      if (!b || g.acts.witchDone) return false;
+      if (g.potions.save && g.acts.kill && !g.acts.doubleKill && (g.acts.kill !== b || canSelfSave(g)) && Math.random() < 0.5) witchAct(g, b, { save: true });
       else if (g.potions.poison && Math.random() < 0.2) witchAct(g, b, { poison: pick(others(b)) });
       else witchAct(g, b, {});
       return true;
     }
-    case 'hunter': {
-      if (!isBot(g.hunter.id)) return false;
-      hunterShoot(g, g.hunter.id, pick(others(g.hunter.id)) || null);
+    case 'confirm': {
+      const b = g.confirm.ids.find(id => isBot(id) && !(id in g.confirm.acked));
+      if (!b) return false;
+      ackLoss(g, b, { shoot: g.confirm.hunter === b && Math.random() < 0.7 ? pick(others(b)) || null : null });
+      return true;
+    }
+    case 'day': case 'dusk': {
+      const s = speakerNow(g);
+      if (!s || !isBot(s)) return false;
+      nextSpeaker(g, s);
       return true;
     }
     case 'vote': {
-      const b = voters(g).find(id => isBot(id) && !(id in g.votes));
+      const b = voters(g).find(id => isBot(id) && !(id in g.votes) && !(g.pk || []).includes(id));
       if (!b) return false;
-      castVote(g, b, Math.random() < 0.1 ? null : pick(others(b)));
+      castVote(g, b, Math.random() < 0.1 ? null : pick(candidates(g).filter(x => x !== b)) || null);
       return true;
     }
     default:

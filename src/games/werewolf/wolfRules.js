@@ -62,6 +62,7 @@ export const VARIANTS = [
   { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
   { key: 'mute', zh: '夜里失去第一条命', opts: [['no', '照常投票', ''], ['yes', '当天不能投票', '第二天恢复']] },
   { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['baby', '金宝宝', '两张都是村民的人（金宝宝）全部出局，或好人的神牌全灭'], ['city', '屠城', '好人阵营全部出局']] },
+  { key: 'pk', zh: '平票', opts: [['no', '无人出局', ''], ['yes', 'PK 再投', '平票的人再各说一轮，其他人再投一次；再平票无人出局']] },
   { key: 'peace', zh: '连续平安夜', opts: [['no', '不算', ''], ['three', '三晚好人胜', '连续三个晚上没有人失去命，好人直接获胜']] },
 ];
 export const DEFAULT_RULES = Object.fromEntries(VARIANTS.map(v => [v.key, v.opts[0][0]]));
@@ -108,6 +109,7 @@ export function buildDeck(n, cfg) {
   const villagers = 2 * n - cfg.wolves - cfg.gods.length;
   if (cfg.wolves < 1) return { error: '至少要 1 张狼牌' };
   if (cfg.wolves > n - 1) return { error: '狼牌太多了' };
+  if (cfg.rules?.doubleWolf === 'force' && cfg.wolves < 3) return { error: '金刚狼局至少要 3 张狼牌（金刚狼 + 一个狼队友）' };
   if (villagers < 1) return { error: '至少要留 1 张村民牌' };
   return { cards: [...Array(cfg.wolves).fill('wolf'), ...cfg.gods, ...Array(villagers).fill('villager')], villagers };
 }
@@ -123,7 +125,7 @@ const shuffle = arr => {
 
 export function newGame(players, cfg) {
   const rules = cfg.rules || rulesOf(cfg);
-  const seats = shuffle(players.map(p => p.id));
+  const seats = players.map(p => p.id); // lobby order = real seating (seat 1 = host)
   const n = seats.length;
   const deck = buildDeck(n, cfg);
   if (deck.error) throw new Error(deck.error);
@@ -164,6 +166,7 @@ export function newGame(players, cfg) {
     winner: null,
     jglUsed: false,
     peaceStreak: 0,
+    timeScale: cfg.timeScale ?? 1,
   };
   g.goodGodsAtStart = goodCampCards(g).gods;
   if (rules.order === 'random') startNight(g);
@@ -190,7 +193,7 @@ export const canDouble = (g, id) => isJgl(g, id) && g.dead[id] === 0 && !g.jglUs
 /** 金宝宝: both cards are villagers. They know each other from the start (金宝宝 variant). */
 export const isBaby = (g, id) => g.hands[id].cards.every(c => c === 'villager');
 export const babies = g => g.seats.filter(id => isBaby(g, id));
-export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id));
+export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id) && !(g.pk || []).includes(id));
 
 function goodCampCards(g) {
   let villagers = 0;
@@ -223,17 +226,30 @@ export function lockCards(g, id) {
 }
 
 // ---------------------------------------------------------------- night ---
-function startNight(g) {
+// Nights are clock-driven so their length leaks nothing: the witch phase always
+// happens (a silent stand-in when no witch can act) and dawn never comes before
+// NIGHT_MIN plus some jitter. The host's phone calls settleNight() when due.
+export const NIGHT_MIN_MS = 30_000;
+export const FORCE_AFTER_MS = 75_000;
+const scale = g => g.timeScale ?? 1;
+const jitter = (lo, hi) => lo + Math.random() * (hi - lo);
+
+function startNight(g, now = Date.now()) {
   g.night += 1;
   g.step = 'night';
-  g.acts = { guard: null, wolves: {}, seer: null, kill: null, save: false, poison: null, witchDone: false, double: null, doubleKill: false };
+  g.acts = { guard: null, wolves: {}, seer: null, kill: null, save: false, poison: null, witchDone: false, double: null, doubleKill: false, forced: false };
+  g.nightStart = now;
+  g.settleAt = null;
   g.votes = {};
-  advanceNight(g);
+  g.pk = null;
+  g.dusk = null;
+  advanceNight(g, now);
 }
 
 /** Who still has to act this night (for the progress counter / waiting screens). */
 export function nightPending(g) {
   const a = g.acts;
+  if (a.forced) return [];
   const out = [];
   holders(g, 'guard').forEach(id => { if (!a.guard) out.push(id); });
   activeWolves(g).forEach(id => { if (!(id in a.wolves)) out.push(id); });
@@ -241,16 +257,36 @@ export function nightPending(g) {
   return out;
 }
 
-const witchCanAct = g => holders(g, 'witch').length > 0 && (g.potions.save || g.potions.poison);
+export const witchCanAct = g => holders(g, 'witch').length > 0 && (g.potions.save || g.potions.poison);
 
-function advanceNight(g) {
+function advanceNight(g, now = Date.now()) {
   if (g.step !== 'night' || nightPending(g).length) return;
   g.acts.kill = wolfDecision(g);
   // 金刚狼's double strike only fires if the pack ends up on the 金刚狼's own pick
   const d = g.acts.double;
   g.acts.doubleKill = !!(d && g.acts.kill && g.acts.wolves[d] === g.acts.kill && canDouble(g, d));
-  if (witchCanAct(g)) g.step = 'witch';
-  else resolveNight(g);
+  g.step = 'witch';
+  if (!witchCanAct(g) || g.acts.forced) {
+    g.acts.witchDone = true; // nobody to wake: pretend for a plausible while
+    g.settleAt = Math.max(g.nightStart + NIGHT_MIN_MS * scale(g), now + jitter(6000, 14000) * scale(g));
+  }
+}
+
+/** Host's phone: dawn once the witch is done and the minimum night length has passed. */
+export function settleNight(g, now = Date.now()) {
+  if (g.step !== 'witch' || !g.acts.witchDone || g.settleAt == null || now < g.settleAt) return false;
+  resolveNight(g, now);
+  return true;
+}
+
+/** Host override when someone's phone is asleep: missing actions count as "did nothing". */
+export function forceNight(g, now = Date.now()) {
+  must(g.step === 'night' || g.step === 'witch', '现在不是夜晚');
+  must(now - g.nightStart >= FORCE_AFTER_MS * scale(g), '再等等，夜里还有人在操作');
+  g.acts.forced = true;
+  if (g.step === 'night') advanceNight(g, now);
+  else if (!g.acts.witchDone) { g.acts.witchDone = true; g.settleAt = now; }
+  settleNight(g, now);
 }
 
 /** Majority of active wolves' picks; ties go to the lowest-seat wolf's pick. */
@@ -292,8 +328,8 @@ export function seerAct(g, id, target) {
   advanceNight(g);
 }
 
-export function witchAct(g, id, { save = false, poison = null } = {}) {
-  must(g.step === 'witch' && activeCard(g, id) === 'witch', '现在不能用药');
+export function witchAct(g, id, { save = false, poison = null } = {}, now = Date.now()) {
+  must(g.step === 'witch' && activeCard(g, id) === 'witch' && !g.acts.witchDone, '现在不能用药');
   must(!(save && poison), '同一晚只能用一瓶药');
   if (save) {
     must(g.potions.save, '解药已经用过了');
@@ -308,7 +344,7 @@ export function witchAct(g, id, { save = false, poison = null } = {}) {
   g.acts.save = !!save;
   g.acts.poison = poison || null;
   g.acts.witchDone = true;
-  resolveNight(g);
+  g.settleAt = Math.max(g.nightStart + NIGHT_MIN_MS * scale(g), now + jitter(1500, 5000) * scale(g));
 }
 
 export const canSelfSave = g => R(g).selfSave === 'always' || (R(g).selfSave === 'first' && g.night === 1);
@@ -318,7 +354,7 @@ function loseLife(g, id, cause, when) {
   const card = activeCard(g, id);
   g.dead[id] += 1;
   g.graveyard.push({ id, card, cause, ...when });
-  if (card === 'hunter' && cause !== 'poison' && !g.hunter) g.hunter = { id, cause };
+  g.lostNow = [...(g.lostNow || []), { id, card, cause }];
   return card;
 }
 
@@ -337,6 +373,10 @@ function resolveNight(g) {
   }
   if (a.save) g.potions.save = false;
   if (a.poison) { g.potions.poison = false; lost.push({ id: a.poison, card: loseLife(g, a.poison, 'poison', when) }); }
+  g.history = [...(g.history || []), {
+    night: g.night, guard: a.guard, wolves: { ...a.wolves }, kill: a.kill, double: a.doubleKill || undefined,
+    save: a.save ? a.kill : null, poison: a.poison, seer: g.seerLog.find(l => l.night === g.night) || null, forced: a.forced || undefined,
+  }];
   g.muted = lost.map(l => l.id).filter(id => g.dead[id] === 1);
   if (R(g).reveal !== 'show') lost.forEach(l => { delete l.card; });
   g.guardLast = a.guard || null;
@@ -344,42 +384,119 @@ function resolveNight(g) {
   g.log.push({ type: 'night', night: g.night, lost, double: a.doubleKill || undefined });
   g.lastNight = { night: g.night, lost };
   g.peaceStreak = lost.length ? 0 : (g.peaceStreak || 0) + 1;
+  afterLoss(g, 'day');
+}
+
+// -------------------------------------------------------------- confirm ---
+// Everyone who just lost a life gets the same private "you lost a life" card;
+// a hunter (not poisoned) chooses there whether to shoot. Nobody else can tell
+// which of them is the hunter, so under 不亮牌 the hunter can keep the gun hidden.
+function afterLoss(g, then) {
+  const lost = g.lostNow || [];
+  g.lostNow = [];
   if (checkWin(g)) return;
-  g.step = g.hunter ? 'hunter' : 'day';
-  if (g.hunter) g.hunter.then = 'day';
+  const ids = [...new Set(lost.map(l => l.id))];
+  if (!ids.length) { proceed(g, then); return; }
+  const hunter = lost.find(l => l.card === 'hunter' && l.cause !== 'poison' && !g.hunterUsed)?.id || null;
+  g.confirm = { ids, acked: {}, hunter, then, lost };
+  g.step = 'confirm';
+}
+
+function proceed(g, then) {
+  if (then === 'day') enterDay(g);
+  else if (then === 'dusk') enterDusk(g);
+  else enterDay(g);
+}
+
+/** shoot: target id / null (hunter only; others just acknowledge). */
+export function ackLoss(g, id, { shoot = null } = {}) {
+  const c = g.confirm;
+  must(g.step === 'confirm' && c.ids.includes(id), '现在不用确认');
+  if (id in c.acked) return;
+  if (shoot) {
+    must(c.hunter === id, '你不能开枪');
+    must(shoot !== id && isAlive(g, shoot), '选一个还在场的其他人');
+  }
+  c.acked[id] = shoot || null;
+  if (c.hunter === id) {
+    g.hunterUsed = true;
+    if (shoot) {
+      const card = loseLife(g, shoot, 'shot', { day: g.day });
+      const show = R(g).reveal === 'show';
+      g.log.push({ type: 'shot', day: g.day, from: show ? id : undefined, to: shoot, card: show ? card : undefined });
+      if (checkWin(g)) return;
+      const extra = (g.lostNow || []).map(l => l.id).filter(x => !c.ids.includes(x));
+      c.ids.push(...extra);
+      c.lost.push(...(g.lostNow || []));
+      g.lostNow = [];
+      g.shotToday = [...(g.shotToday || []), shoot];
+    } else if (R(g).reveal === 'show') {
+      g.log.push({ type: 'shot', day: g.day, from: id, to: null });
+    }
+  }
+  if (c.ids.every(x => x in c.acked)) {
+    const then = c.then;
+    g.confirm = null;
+    proceed(g, then);
+  }
 }
 
 // ------------------------------------------------------------------ day ---
-export function hunterShoot(g, id, target) {
-  must(g.step === 'hunter' && g.hunter?.id === id, '现在不能开枪');
-  let card = null;
-  if (target) {
-    must(target !== id && isAlive(g, target), '选一个还在场的其他人');
-    card = loseLife(g, target, 'shot', { day: g.day });
+/**
+ * No 警长, so the app plays 法官 for the speaking order: start next to last
+ * night's first victim (死左 / 死右, picked at random); after a 平安夜 start
+ * from a random seat. Seat numbers run clockwise, so 'up' = next seat number.
+ * Players who died for good last night give 遗言 first.
+ */
+function enterDay(g, now = Date.now()) {
+  g.step = 'day';
+  const n = g.seats.length;
+  const lost = g.lastNight?.night === g.day ? g.lastNight.lost : [];
+  const victim = lost[0]?.id;
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const from = victim ? g.seats.indexOf(victim) + dir : Math.floor(Math.random() * n);
+  const order = [];
+  for (let k = 0; k < n; k++) {
+    const id = g.seats[(((from + dir * k) % n) + n) % n];
+    if (isAlive(g, id)) order.push(id);
   }
-  g.log.push({ type: 'shot', day: g.day, from: id, to: target || null, card: R(g).reveal === 'show' ? card : undefined });
-  const then = g.hunter.then;
-  g.hunter = null;
-  if (checkWin(g)) return;
-  if (then === 'night') startNight(g);
-  else g.step = 'day';
+  const lastWords = [...new Set(lost.map(l => l.id))].filter(id => !isAlive(g, id) && g.day === 1);
+  g.speak = { order: [...lastWords, ...order], lastWords, at: 0, since: now, dir: dir === 1 ? 'up' : 'down', after: victim || null, pk: false };
+  g.shotToday = [];
+}
+
+/** Current speaker (or the host) passes the turn to the next speaker. */
+export function nextSpeaker(g, id, isHost = false, now = Date.now()) {
+  must((g.step === 'day' || g.step === 'dusk') && (g.speak || g.dusk), '现在不是发言时间');
+  const sp = g.step === 'dusk' ? g.dusk : g.speak;
+  must(isHost || sp.order[sp.at] === id, '还没轮到你');
+  if (sp.at < sp.order.length) { sp.at += 1; sp.since = now; }
+}
+export function speakerNow(g) {
+  const sp = g.step === 'day' ? g.speak : g.step === 'dusk' ? g.dusk : null;
+  return sp ? sp.order[sp.at] || null : null;
 }
 
 export function startVote(g) {
   must(g.step === 'day', '现在不能投票');
   g.step = 'vote';
   g.votes = {};
-  if (!voters(g).length) { // everyone left is muted today
-    g.log.push({ type: 'vote', day: g.day, votes: {}, out: null, tie: false });
-    startNight(g);
+  if (!voters(g).length) { // everyone left is muted / on the PK stand
+    g.log.push({ type: 'vote', day: g.day, votes: {}, out: null, tie: false, pk: !!g.pk });
+    g.pk = null;
+    enterDusk(g);
   }
 }
+
+/** Who may be voted for right now (PK round: only the tied players). */
+export const candidates = g => (g.pk ? g.pk.filter(id => isAlive(g, id)) : alivePlayers(g));
 
 /** target = player id, or null to abstain. Voting closes when everyone alive has voted. */
 export function castVote(g, id, target) {
   must(g.step === 'vote' && isAlive(g, id), '你现在不能投票');
   must(!isMuted(g, id), '你昨晚失去了第一条命，今天不能投票');
-  must(target === null || isAlive(g, target), '他已经出局了');
+  must(!(g.pk || []).includes(id), 'PK 台上的人不投票');
+  must(target === null || (isAlive(g, target) && candidates(g).includes(target)), g.pk ? '只能投 PK 台上的人' : '他已经出局了');
   g.votes[id] = target;
   const vs = voters(g);
   if (!vs.every(v => v in g.votes)) return;
@@ -387,13 +504,37 @@ export function castVote(g, id, target) {
   const tally = {};
   vs.forEach(v => { const t = g.votes[v]; if (t) tally[t] = (tally[t] || 0) + 1; });
   const best = Math.max(0, ...Object.values(tally));
-  const top = Object.keys(tally).filter(t => tally[t] === best);
-  const out = best > 0 && top.length === 1 ? top[0] : null;
+  const top = g.seats.filter(t => tally[t] === best && best > 0);
+  const out = top.length === 1 ? top[0] : null;
+  const tie = top.length > 1;
   const card = out ? loseLife(g, out, 'vote', { day: g.day }) : null;
-  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie: best > 0 && top.length > 1, card: R(g).reveal === 'show' ? card : undefined });
-  if (checkWin(g)) return;
-  if (g.hunter) { g.hunter.then = 'night'; g.step = 'hunter'; return; }
-  startNight(g);
+  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie, pk: !!g.pk || undefined, card: R(g).reveal === 'show' ? card : undefined });
+  if (tie && R(g).pk === 'yes' && !g.pk) {
+    // PK: the tied players speak again, everyone else votes once more
+    g.pk = top;
+    g.step = 'day';
+    g.speak = { order: top, lastWords: [], at: 0, since: Date.now(), dir: 'up', after: null, pk: true };
+    return;
+  }
+  g.pk = null;
+  g.voteOut = out;
+  afterLoss(g, 'dusk');
+}
+
+// ----------------------------------------------------------------- dusk ---
+// Between the vote and nightfall: whoever is now out for good gives 遗言,
+// then the host calls 天黑请闭眼. Nobody's night panel shows up early.
+function enterDusk(g, now = Date.now()) {
+  g.step = 'dusk';
+  const gone = [g.voteOut, ...(g.shotToday || [])].filter(id => id && !isAlive(g, id));
+  g.dusk = { order: [...new Set(gone)], at: 0, since: now };
+  g.voteOut = null;
+}
+
+export function nightfall(g, id, isHost, now = Date.now()) {
+  must(g.step === 'dusk', '现在不能天黑');
+  must(isHost, '由房主宣布天黑');
+  startNight(g, now);
 }
 
 // ------------------------------------------------------------------ end ---

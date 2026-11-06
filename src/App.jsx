@@ -39,6 +39,8 @@ const AppContent = () => {
   const currentGame = route.game;
   const setCurrentPage = page => navigate({ page });
   const setCurrentGame = game => navigate({ page: 'game', game });
+  const inGame = currentPage === 'game';
+  const hoverCls = inGame ? 'hover:text-white' : 'hover:text-gray-600';
 
   const loadPhotoSeriesData = useCallback(async (forceRefresh = false) => {
     try {
@@ -127,53 +129,53 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Consistent Header for both pages */}
-      <header className="p-6 flex flex-wrap gap-y-3 justify-between items-center max-w-7xl mx-auto">
+    <div className={`min-h-screen ${inGame ? 'bg-[#0e0a1c] text-[#d9d2f2]' : 'bg-white'}`}>
+      {/* Consistent header; in the game area it turns night-dark and slim so the table fits on a phone */}
+      <header className={`${inGame ? 'px-4 py-2 sm:p-4 gap-x-4 justify-end sm:justify-between' : 'p-6 gap-y-3 justify-between'} flex flex-wrap items-center max-w-7xl mx-auto`}>
         <h1 
-          className="text-xl sm:text-2xl font-light cursor-pointer" 
+          className={`${inGame ? 'hidden sm:block text-xl' : 'text-xl sm:text-2xl'} font-light cursor-pointer`} 
           onClick={() => setCurrentPage('work')}
         >
           Enting Zhou Photography
         </h1>
-        <nav className="flex gap-4 sm:gap-8 items-center">
+        <nav className={`flex ${inGame ? 'gap-3 sm:gap-6 text-sm sm:text-base' : 'gap-4 sm:gap-8'} items-center`}>
           <button 
             onClick={() => setCurrentPage('work')}
-            className={`hover:text-gray-600 transition-colors ${currentPage === 'work' ? 'font-medium' : ''}`}
+            className={`${hoverCls} transition-colors ${currentPage === 'work' ? 'font-medium' : ''}`}
           >
             WORK
           </button>
           <button 
             onClick={() => setCurrentPage('about')}
-            className={`hover:text-gray-600 transition-colors ${currentPage === 'about' ? 'font-medium' : ''}`}
+            className={`${hoverCls} transition-colors ${currentPage === 'about' ? 'font-medium' : ''}`}
           >
             ABOUT
           </button>
           <button 
             onClick={() => setCurrentPage('game')}
-            className={`hover:text-gray-600 transition-colors ${currentPage === 'game' ? 'font-medium' : ''}`}
+            className={`${hoverCls} transition-colors ${currentPage === 'game' ? 'font-medium' : ''}`}
           >
             GAME
           </button>
           {isAuthenticated && (
             <button 
               onClick={() => setCurrentPage('manage')}
-              className={`hover:text-gray-600 transition-colors ${currentPage === 'manage' ? 'font-medium' : ''}`}
+              className={`${hoverCls} transition-colors ${currentPage === 'manage' ? 'font-medium' : ''}`}
             >
               MANAGE
             </button>
           )}
           <div className="flex gap-4 items-center">
-            <a href="https://www.instagram.com/e_t_photo/" className="hover:text-gray-600 transition-colors">
+            <a href="https://www.instagram.com/e_t_photo/" className={`${hoverCls} transition-colors`}>
               <Instagram size={20} />
             </a>
-            <a href="mailto:etetzet@outlook.com" className="hover:text-gray-600 transition-colors">
+            <a href="mailto:etetzet@outlook.com" className={`${hoverCls} transition-colors`}>
               <Mail size={20} />
             </a>
             {isAuthenticated && (
               <button
                 onClick={logout}
-                className="hover:text-gray-600 transition-colors p-1"
+                className={`${hoverCls} transition-colors p-1`}
                 aria-label="Logout"
               >
                 <LogOut size={20} />

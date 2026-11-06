@@ -21,14 +21,14 @@ function useNarrow() {
  * seats: [{ id, name, isBot }]   (index = seat number - 1)
  * decorate(id) → { top, badge, cls, role, clickable }
  */
-export default function RoundTable({ seats, capacity, myId, decorate = () => ({}), onSeatClick, center }) {
+export default function RoundTable({ seats, capacity, myId, decorate = () => ({}), onSeatClick, center, compact = false }) {
   const narrow = useNarrow();
   const total = Math.max(seats.length, capacity || 0);
   const rx = narrow ? 40 : 43;
-  const ry = narrow ? 40 : 40;
+  const ry = narrow && compact ? 37 : 40;
 
   return (
-    <div className="px-table">
+    <div className={`px-table ${compact ? 'compact' : ''}`}>
       <div className="px-table-img"><PixelSprite pixels={TABLE} fluid /></div>
       <div className="px-table-center">{center}</div>
 

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Torch } from '../pixel/PixelSprite';
 import { roomStore, getPlayerId } from '../avalon/roomStore';
 import { useRoute, navigate } from '../../route';
+import { keepHostFirst } from './seats';
 import { PlayersProvider, ConfirmProvider, ConfirmOutlet, useConfirm } from '../avalon/ui';
 import { NAME_MAX_UNITS, clampName, nameUnits, uniqueName } from '../avalon/names';
 
@@ -90,6 +91,7 @@ function RoomInner({ spec, onExit }) {
       const humans = r.players.filter(p => !p.isBot);
       if (humans.length === 0) return null; // last human out closes the room
       if (r.hostId === myId) r.hostId = humans[0].id;
+      keepHostFirst(r);
       if (r.phase === 'game') { r.phase = 'lobby'; r.game = null; }
       return r;
     });
@@ -103,7 +105,7 @@ function RoomInner({ spec, onExit }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 mb-6">
+      <div className="flex items-center justify-between gap-3 mb-3 sm:mb-6">
         <button className="px-btn dark sm" onClick={exit}>◀ 游戏厅</button>
         {inRoom && (
           <div className="flex items-center gap-2">

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import PixelSprite, { Portrait } from '../pixel/PixelSprite';
 import RoundTable from '../avalon/RoundTable';
 import { roomLink } from '../../route';
+import { IS_LOCAL } from '../avalon/roomStore';
+import { requestSwap, answerSwap, cancelSwap, hostSwap, pendingFrom, pendingTo } from '../room/seats';
 import { Who, useConfirm } from '../avalon/ui';
 import {
   ROLES, ROLE_BLURB, GODS, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildDeck, effectiveConfig, newGame,
@@ -48,6 +50,23 @@ export default function Lobby({ room, myId, update, busy }) {
     return r;
   });
   const toggleGod = id => custom(c => { c.gods = c.gods.includes(id) ? c.gods.filter(x => x !== id) : GODS.filter(x => x === id || c.gods.includes(x)); });
+  // seat swapping (seat 1 stays the host)
+  const [picked, setPicked] = useState(null);
+  const outgoing = pendingFrom(room, myId);
+  const incoming = pendingTo(room, myId);
+  const name = id => room.players.find(p => p.id === id)?.name || '?';
+  const seatNo = id => room.players.findIndex(p => p.id === id) + 1;
+  const onSeat = async id => {
+    if (isHost) {
+      if (!picked) { setPicked(id); return; }
+      if (picked !== id) update(r => hostSwap(r, picked, id));
+      setPicked(null);
+      return;
+    }
+    const ok = await confirm({ title: '请求换位', body: <>想和 <Who id={id} /> 换位吗？你在 {seatNo(myId)} 号，他在 {seatNo(id)} 号。对方同意后生效。</>, ok: '发送请求' });
+    if (ok) update(r => requestSwap(r, myId, id));
+  };
+  const canTapSeat = id => id !== room.hostId && (isHost || (id !== myId && seatNo(myId) > 1));
   const kick = async id => {
     const ok = await confirm({ title: '移出房间', body: <>确定把 <Who id={id} /> 移出房间吗？</>, ok: '移出', tone: 'danger' });
     if (ok) update(r => { r.players = r.players.filter(p => p.id !== id); return r; });
@@ -61,7 +80,9 @@ export default function Lobby({ room, myId, update, busy }) {
     doStart();
   };
   const doStart = () => update(r => {
-    r.game = newGame(r.players, effectiveConfig(r.players.length, r.config));
+    // local multi-tab testing runs nights fast; real rooms use real-time pacing
+    const timeScale = window.__wwTimeScale ?? (IS_LOCAL ? 0.15 : 1);
+    r.game = newGame(r.players, { ...effectiveConfig(r.players.length, r.config), timeScale });
     r.phase = 'game';
     r.round = (r.round || 0) + 1;
     return r;
@@ -75,10 +96,13 @@ export default function Lobby({ room, myId, update, busy }) {
           seats={room.players}
           capacity={Math.max(MIN_PLAYERS, n)}
           myId={myId}
+          onSeatClick={onSeat}
           decorate={id => ({
             top: id === room.hostId ? <PixelSprite name="crown" scale={2} title="房主" /> : null,
+            clickable: canTapSeat(id),
+            cls: picked === id || outgoing?.to === id ? 'picked' : '',
             corner: isHost && id !== myId
-              ? <span className="px-kick" role="button" tabIndex={0} onClick={() => kick(id)} title="移出房间" aria-label="移出房间" data-testid="kick">✕</span>
+              ? <span className="px-kick" role="button" tabIndex={0} onClick={e => { e.stopPropagation(); kick(id); }} title="移出房间" aria-label="移出房间" data-testid="kick">✕</span>
               : null,
           })}
           center={
@@ -88,6 +112,22 @@ export default function Lobby({ room, myId, update, busy }) {
             </>
           }
         />
+        {incoming.map(s => (
+          <div key={s.from} className="px-frame gold pad flex flex-wrap items-center justify-between gap-2 mt-2" data-testid="swap-request">
+            <span><Who id={s.from} />（{seatNo(s.from)} 号）想和你换位</span>
+            <span className="flex gap-2">
+              <button className="px-btn dark sm" disabled={busy} onClick={() => update(r => answerSwap(r, myId, s.from, false))} data-testid="swap-no">拒绝</button>
+              <button className="px-btn gold sm" disabled={busy} onClick={() => update(r => answerSwap(r, myId, s.from, true))} data-testid="swap-yes">同意</button>
+            </span>
+          </div>
+        ))}
+        <div className="fs-12 c-dim text-center mt-2" data-testid="seat-hint">
+          {outgoing
+            ? <>已请求和 {name(outgoing.to)} 换位，等对方同意… <button className="underline" onClick={() => update(r => cancelSwap(r, myId))} data-testid="swap-cancel">取消</button></>
+            : isHost
+              ? (picked ? <>已选 {name(picked)}，再点一个座位和他换（再点他取消）</> : '点两个座位可以给他们换位；1 号固定是房主')
+              : '点别人的座位可以请求换位；1 号固定是房主'}
+        </div>
         <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
           <button className="px-btn blue" onClick={copy}>{copied ? '已复制 ✓' : '复制邀请链接'}</button>
           {isHost && IS_DEV && n < MAX_PLAYERS && (
@@ -98,15 +138,22 @@ export default function Lobby({ room, myId, update, busy }) {
 
       <div className="flex flex-col gap-6">
         <div className="px-frame pad" data-testid="presets">
-          <div className="px-title">选择板子 · {tableN} 人</div>
+          <div className="px-title">{isHost ? '选择板子' : '本局板子'} · {tableN} 人</div>
           {n < MIN_PLAYERS && <div className="fs-12 c-mute mb-2">按 {tableN} 人预览</div>}
+          {!isHost && <div className="fs-12 c-dim mb-2">由房主选择</div>}
           <div className="flex flex-col">
             {PRESETS.map(p => {
               const pc = effectiveConfig(tableN, { auto: true, rules: presetRules(p.id) });
-              const pb = balanceOf(tableN, pc);
+              return { p, pc, pb: balanceOf(tableN, pc) };
+            })
+              // balanced boards first; boards that can't be balanced at this size sink to the bottom
+              .sort((a, b) => (a.pb?.level !== 'ok') - (b.pb?.level !== 'ok'))
+              .filter(({ p }) => isHost || preset === p.id)
+              .map(({ p, pc, pb }) => {
               const on = preset === p.id;
+              const off = pb && pb.level !== 'ok';
               return (
-                <button key={p.id} className={`px-role row good ${on ? 'on' : ''}`} disabled={!isHost} aria-pressed={on}
+                <button key={p.id} className={`px-role row good ${on ? 'on' : ''} ${off && !on ? 'opacity-60' : ''}`} disabled={!isHost} aria-pressed={on}
                   onClick={() => pickPreset(p.id)} data-testid={`preset-${p.id}`}>
                   <span className="flex flex-col gap-1 w-full">
                     <span className="flex justify-between gap-2">
@@ -114,6 +161,7 @@ export default function Lobby({ room, myId, update, busy }) {
                       {pb && <span className={`fs-12 ${pb.level === 'ok' ? 'c-dim' : 'c-evil'}`}>好人胜率 ≈{pb.good}%{pb.level !== 'ok' ? ' ⚠' : ''}</span>}
                     </span>
                     <span className="fs-12 c-dim">{p.desc}</span>
+                    {off && <span className="fs-12 c-evil">{tableN} 人时{pb.good > 50 ? '偏好人' : '偏狼人'}，换个人数或板子更好</span>}
                     <span className="fs-12 leading-loose"><DeckLine deck={buildDeck(tableN, pc).cards || []} /></span>
                   </span>
                 </button>
@@ -174,9 +222,11 @@ export default function Lobby({ room, myId, update, busy }) {
         </div>
 
         {isHost ? (
-          <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!deck.error} onClick={start} data-testid="start-game">
-            {missing > 0 ? `还差 ${missing} 人` : '发牌开局'}
-          </button>
+          <div className="px-sticky-cta">
+            <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!deck.error} onClick={start} data-testid="start-game">
+              {missing > 0 ? `还差 ${missing} 人` : `发牌开局 · ${PRESETS.find(p => p.id === preset)?.zh || '自定义'}`}
+            </button>
+          </div>
         ) : (
           <div className="px-frame pad text-center c-dim">等待房主开局…</div>
         )}
@@ -197,7 +247,7 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
         baby: '金宝宝（两张都是村民的人，开局互相认识）全部出局，或好人的神牌全灭。',
       })[rules.win] || '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
       <p className="c-dim">
-        没有警长；平票无人出局；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
+        没有警长，发言顺序由手机决定；{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
         守卫不能连守，同守同救{rules.guardSave === 'dies' ? '会死' : '不死'}{rules.mute === 'yes' ? '；夜里失去第一条命的人当天不能投票' : ''}。
       </p>
       <table className="w-full border-collapse mt-1">
@@ -237,15 +287,16 @@ function VariantPanel({ rules, isHost, update }) {
           const cur = v.opts.find(o => o[0] === rules[v.key]) || v.opts[0];
           return (
             <div key={v.key}>
-              <div className="fs-12 mb-1 flex justify-between gap-2"><span>{v.zh}</span><span className="c-mute text-right">{cur[2]}</span></div>
+              <div className="fs-12 mb-1">{v.zh}</div>
               <div className="px-seg" role="radiogroup" aria-label={v.zh}>
                 {v.opts.map(([val, label], i) => (
                   <button key={val} role="radio" aria-checked={rules[v.key] === val} disabled={!isHost}
                     className={rules[v.key] === val ? 'on' : ''} onClick={() => set(v.key, val)} data-testid={`rule-${v.key}-${val}`}>
-                    {label}{i === 0 && <span className="c-mute"> ★</span>}
+                    {label}{i === 0 && <sup className="px-star-rec" title="常用">★</sup>}
                   </button>
                 ))}
               </div>
+              {cur[2] && <div className="fs-12 c-dim mt-1">{cur[2]}</div>}
             </div>
           );
         })}

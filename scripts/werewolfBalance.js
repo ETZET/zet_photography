@@ -6,7 +6,7 @@
 //   node scripts/werewolfBalance.js --all      # recompute everything (~20 min)
 //
 // Low-impact variants (seer sees camp, witch self-save, guard+save, reveal
-// card, three quiet nights) moved the good win rate by ≤5 points in testing and are left at their
+// card, three quiet nights, PK on ties) moved the good win rate by ≤5 points in testing and are left at their
 // defaults while tuning.
 //
 // AI model ("medium" table):
@@ -93,6 +93,7 @@ function playOne(n, cfg) {
         break;
       }
       case 'witch': {
+        if (g.acts.witchDone) { R.settleNight(g, Infinity); break; }
         const w = R.holders(g, 'witch')[0];
         const k = g.acts.kill;
         const evil = camp(w);
@@ -123,14 +124,25 @@ function playOne(n, cfg) {
         R.startVote(g);
         break;
       }
-      case 'hunter': {
-        const h = g.hunter.id;
-        const sus = [...claimedWolf].filter(x => R.isAlive(g, x) && x !== h);
-        R.hunterShoot(g, h, (camp(h) ? pick(others(h).filter(x => !camp(x))) : sus[0] || pick(others(h))) || null);
+      case 'confirm': {
+        const c = g.confirm;
+        const h = c.ids.find(x => !(x in c.acked));
+        let shoot = null;
+        if (c.hunter === h) {
+          const sus = [...claimedWolf].filter(x => R.isAlive(g, x) && x !== h);
+          shoot = (camp(h) ? pick(others(h).filter(x => !camp(x))) : sus[0] || pick(others(h))) || null;
+        }
+        R.ackLoss(g, h, { shoot });
+        break;
+      }
+      case 'dusk': {
+        R.nightfall(g, null, true, 0);
         break;
       }
       case 'vote': {
         const v = R.voters(g).find(x => !(x in g.votes));
+        const cand = R.candidates(g);
+        const others = id => cand.filter(x => x !== id);
         let t;
         if (camp(v)) {
           const good = others(v).filter(x => !camp(x));
@@ -138,7 +150,7 @@ function playOne(n, cfg) {
         } else {
           // 金宝宝 know each other and never vote a fellow 金宝宝
           const ok = x => !(rules.win === 'baby' && R.isBaby(g, v) && R.isBaby(g, x));
-          if (suspect && suspect !== v && ok(suspect) && R.isAlive(g, suspect) && rnd() < 0.85) t = suspect;
+          if (suspect && suspect !== v && ok(suspect) && cand.includes(suspect) && rnd() < 0.85) t = suspect;
           else t = pick(others(v).filter(x => !claimedGood.has(x) && ok(x))) || pick(others(v).filter(ok)) || null;
         }
         R.castVote(g, v, t || null);
@@ -180,7 +192,9 @@ const CHECK_GAMES = 2000;
 function tune(n, rules) {
   const grid = {}; // `${wolves}:${mask}` → good win %
   let best = null;
-  for (let wolves = 1; wolves <= Math.ceil(n / 2); wolves++) {
+  // 金刚狼 boards need a second wolf player, or the lone wolf is caught by the first check
+  const minWolves = rules.doubleWolf === 'force' ? 3 : 1;
+  for (let wolves = minWolves; wolves <= Math.ceil(n / 2); wolves++) {
     for (const m of MASKS) {
       const gods = godsOf(m);
       const cfg = { wolves, gods, rules, order: rules.order };
@@ -200,6 +214,8 @@ function tune(n, rules) {
 
 const MAIN = process.argv[1]?.endsWith('werewolfBalance.js');
 const ALL = process.argv.includes('--all');
+// --redo key=value  recompute only the combos with that rule value
+const REDO = process.argv.filter((a, i) => process.argv[i - 1] === '--redo').map(a => a.split('='));
 let prev = {};
 try { prev = (await import('../src/games/werewolf/balanceTable.js')).BALANCE_TABLE; } catch { /* first run */ }
 
@@ -218,7 +234,8 @@ const short = { seer: '预', witch: '女', hunter: '猎', guard: '守' };
 for (const combo of MAIN ? combos : []) {
   const rules = { ...R.DEFAULT_RULES, ...combo };
   const key = R.tableKey(rules);
-  if (!ALL && prev[key]) table[key] = prev[key]; // reuse; pass --all to recompute everything
+  const redo = REDO.some(([k, v]) => rules[k] === v);
+  if (!ALL && !redo && prev[key]) table[key] = prev[key]; // reuse; pass --all to recompute everything
   else {
     table[key] = {};
     for (let n = R.MIN_PLAYERS; n <= R.MAX_PLAYERS; n++) table[key][n] = tune(n, rules);
