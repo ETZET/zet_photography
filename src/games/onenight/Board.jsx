@@ -107,7 +107,7 @@ export default function Board({ room, myId, update, busy }) {
         <div className="fs-12 c-dim" data-testid="narrator">{narratorLine(g, now)}</div>
         <CenterCards sel={picking ? sel.center : []} onPick={picking && maxC ? tapCenter : null} />
       </>;
-      case 'day': return <><div className="fs-24 c-gold shadow-px">天亮了</div><div className="fs-12">讨论 · {fmt(g.talkEnd - now)}</div><CenterCards /></>;
+      case 'day': return <><div className="fs-12 c-dim">天亮了 · 讨论</div><div className="fs-24 c-gold shadow-px">{fmt(g.talkEnd - now)}</div></>;
       case 'vote': return <><div className="fs-24 c-gold shadow-px">投票</div><div className="fs-12">{Object.keys(g.votes).length}/{g.seats.length} 已投</div></>;
       case 'end': return <>{res.winners.length ? res.winners.map(w => <div key={w} className={`fs-24 shadow-px ${WIN[w].cls}`}>{WIN[w].zh}</div>) : <div className="fs-24 c-dim shadow-px">没有赢家</div>}<CenterCards faces={g.final.center} /></>;
       default: return null;
@@ -119,7 +119,7 @@ export default function Board({ room, myId, update, busy }) {
     <div className={`grid gap-3 sm:gap-6 lg:grid-cols-[1.3fr_1fr] items-start ${night ? 'px-is-night' : ''}`}>
       {night && <div className="px-night" aria-hidden />}
       <div className="px-frame pad tight relative z-[1] min-w-0">
-        <div className="flex items-center justify-between fs-12 c-dim">
+        <div className="hidden sm:flex items-center justify-between fs-12 c-dim">
           <span>{night ? '夜晚' : g.step === 'day' ? '白天 · 讨论' : g.step === 'vote' ? '白天 · 投票' : '结束'}</span>
           <span>第 {room.round} 局</span>
         </div>
@@ -204,11 +204,10 @@ function NightPanel({ g, myId, task, sel, acted, now, busy, act }) {
         <RoleFace id={start}><div className="fs-12">{taskText(task, start)}</div></RoleFace>
         {info.length > 0 && <div className="fs-12 mt-2"><InfoLines info={info} start={start} /></div>}
       </Peek>
-      <div className="fs-12 mt-2 mb-1 min-h-[30px] flex flex-wrap items-center gap-1" data-testid="night-pick">
-        {picks.length ? <>已选：{picks}</> : <span className="c-dim">在圆桌上点人，或点中间的公共牌</span>}
-      </div>
       <div className="flex-1" />
-      <button className="px-btn night lg block" disabled={busy || !ok} onClick={() => act(x => nightAct(x, myId, sel))} data-testid="night-act">确认</button>
+      <button className="px-btn night lg block mt-2" disabled={busy || !ok} onClick={() => act(x => nightAct(x, myId, sel))} data-testid="night-act">
+        {picks.length ? <span className="inline-flex flex-wrap items-center justify-center gap-1">确认 {picks}</span> : <span className="fs-18">点圆桌上的人或公共牌</span>}
+      </button>
     </div>
   );
 }
@@ -254,11 +253,11 @@ function VotePanel({ g, myId, isHost, target, act, busy, confirm }) {
   };
   return <>
     <Title>投票 · 同时亮票</Title>
-    <p className="fs-12 mb-2">在圆桌上点你要投的人{g.rules.selfVote === 'yes' ? '（可以投自己）' : ''}。大家投完才一起亮票，之前可以改。</p>
-    <p className="mb-2 min-h-[27px]" data-testid="my-vote">{my ? <>你投了 <Who id={my} /></> : <span className="c-dim">你还没投</span>}</p>
     <button className="px-btn gold lg block" disabled={busy || !target || my === target} onClick={() => act(x => castVote(x, myId, target))} data-testid="vote-go">
-      {target ? <>{my ? '改投' : '投'} <Who id={target} /></> : '先在圆桌上点人'}
+      {target && my !== target ? <>{my ? '改投' : '投'} <Who id={target} /></> : my ? '已投 · 点别人可以改' : '先在圆桌上点人'}
     </button>
+    <p className="mt-2 mb-1 min-h-[27px]" data-testid="my-vote">{my ? <>你投了 <Who id={my} /></> : <span className="c-dim">你还没投</span>}</p>
+    <p className="fs-12">点你要投的人{g.rules.selfVote === 'yes' ? '（可以投自己）' : ''}。大家投完才一起亮票，之前可以改。</p>
     {isHost && missing.length > 0 && missing.length < g.seats.length && (
       <button className="px-btn dark sm block mt-2" disabled={busy} onClick={close} data-testid="close-vote">收票（{missing.length} 人没投）</button>
     )}
@@ -357,7 +356,7 @@ function Story({ g }) {
       <div className="px-title">夜晚复盘</div>
       <div className="flex flex-col gap-1">
         {items.map((it, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-1"><span className="c-gold whitespace-nowrap">{i + 1}. {ROLES[it.role].zh}</span>{line(it)}</div>
+          <div key={i} className="flex flex-wrap items-center gap-1"><span className="on-label whitespace-nowrap">{i + 1}. {ROLES[it.role].zh}</span>{line(it)}</div>
         ))}
         {!items.length && <div className="c-dim">这副牌夜里没人睁眼。</div>}
         {g.forced && <div className="c-dim">（房主强制天亮）</div>}

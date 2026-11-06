@@ -16,8 +16,8 @@
 .on-ccard.lg { width: 52px; height: 68px; }
 
 /* night panel: identical box for every role, before and after acting */
-.on-nightbox { min-height: 214px; display: flex; flex-direction: column; }
-@media (max-width: 640px) { .on-nightbox { min-height: 184px; } }
+.on-nightbox { min-height: 200px; display: flex; flex-direction: column; }
+@media (max-width: 640px) { .on-nightbox { min-height: 170px; } }
 
 /* compact press-and-hold cover */
 .on-peek { cursor: pointer; touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; outline: none; padding: 8px 10px; background: rgba(7,5,14,0.45);
@@ -52,4 +52,14 @@
 .on-rolegrid .px-role.on.loner { background: #3a2c66; box-shadow: 0 -4px 0 0 var(--line), 0 4px 0 0 var(--line), -4px 0 0 0 var(--line), 4px 0 0 0 var(--line), inset 0 0 0 3px #9b86e0; }
 .on-step { display: flex; align-items: center; gap: 0; }
 .on-step .px-btn { margin: 4px; padding: 4px 9px 7px; font-size: 18px; }
+@media (max-width: 640px) {
+  .on-ccard { width: 28px; height: 38px; }
+  .on-center { gap: 6px; }
+  .on-peek { padding: 6px 8px; }
+  .on-peek-cover { min-height: 40px; gap: 10px; }
+  .on-peek-cover .px-cardback { width: 26px; height: 36px; }
+  .on-nightbox .px-title { margin-bottom: 8px; }
+}
 @media (prefers-reduced-motion: reduce) { .on-ccard.sel, .on-tl span.r.now, .on-timer.low { animation: none; } }
+.on-label { color: var(--gold); }
+.px-frame.parch .on-label { color: #8a4f0c; }
