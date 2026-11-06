@@ -329,3 +329,6 @@ export const SKYLINE = paint(160, 36, p => {
   const lit = [[44, 16], [47, 16], [83, 10], [86, 10], [83, 16], [104, 22], [138, 18], [26, 27], [64, 25], [122, 28], [90, 28]];
   for (const [x, y] of lit) { p.dot(x, y, '#f5c542'); p.dot(x, y + 1, '#c98a2a'); }
 }, { outline: null, shade: false });
+
+/** Games add their own portraits from their folder (call at module load). */
+export function registerPortraits(more) { Object.assign(PORTRAITS, more); }

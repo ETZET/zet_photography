@@ -3,12 +3,10 @@ import '@fontsource/fusion-pixel-12px-proportional-sc';
 import './games.css';
 import PixelSprite, { Portrait, Torch } from './pixel/PixelSprite';
 import { SKYLINE } from './pixel/portraits';
-import AvalonGame from './avalon/AvalonGame';
-import WerewolfGame from './werewolf/WerewolfGame';
+import { GAMES as REGISTERED, GAME_BY_ID } from './registry';
 
 export const GAMES = [
-  { id: 'avalon', title: '阿瓦隆', en: 'AVALON', desc: '5–10 人身份推理 · 免登录 · 分享链接开房', ready: true, art: 'merlin' },
-  { id: 'werewolf', title: '双身份狼人', en: 'WEREWOLF · TWO LIVES', desc: '5–10 人 · 每人两张身份牌 · 手机当法官', ready: true, art: 'wolf' },
+  ...REGISTERED.map(g => ({ ...g, ready: true })),
   { id: 'soon', title: '敬请期待', en: 'COMING SOON', desc: '下一个小游戏正在像素化…', ready: false },
 ];
 
@@ -41,7 +39,7 @@ export function PixelShell({ children }) {
 }
 
 export default function GamesPage({ gameId, onSelectGame }) {
-  const Game = { avalon: AvalonGame, werewolf: WerewolfGame }[gameId];
+  const Game = GAME_BY_ID[gameId]?.Game;
   if (Game) {
     return (
       <PixelShell>

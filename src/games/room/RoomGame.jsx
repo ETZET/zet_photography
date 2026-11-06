@@ -9,7 +9,8 @@ import { keepHostFirst } from './seats';
 import { PlayersProvider, ConfirmProvider, ConfirmOutlet, useConfirm } from '../avalon/ui';
 import { NAME_MAX_UNITS, clampName, nameUnits, uniqueName } from '../avalon/names';
 
-export const GAME_TITLES = { avalon: '阿瓦隆', werewolf: '双身份狼人' };
+export { GAME_TITLES } from '../registry';
+import { GAME_TITLES } from '../registry';
 const kindOf = room => room?.kind || 'avalon'; // rooms created before `kind` existed are Avalon
 
 // ---------- live room subscription ----------
