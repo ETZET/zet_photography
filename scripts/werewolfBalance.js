@@ -78,14 +78,19 @@ function playOne(n, cfg) {
       case 'night': {
         const id = R.nightPending(g)[0];
         const c = R.activeCard(g, id);
-        if (c === 'guard' && !g.acts.guard) {
+        if (id === R.cupidOf(g) && !g.lovers && g.night === 1 && rules.cupid === 'yes') {
+          const self = rnd() < 0.3;
+          const a = self ? id : pick(others(id));
+          const b = pick(alive.filter(x => x !== a && (self || x !== id)));
+          R.cupidAct(g, id, a, b);
+        } else if (c === 'guard' && !g.acts.guard) {
           const opts = alive.filter(x => x !== g.guardLast);
           R.guardAct(g, id, seerClaimer && opts.includes(seerClaimer) && !camp(id) ? seerClaimer : pick(opts));
         } else if (c === 'seer' && !g.acts.seer) {
           const unknown = others(id).filter(x => !claimedGood.has(x) && !claimedWolf.has(x));
           R.seerAct(g, id, pick(unknown.length ? unknown : others(id)));
         } else {
-          const prey = alive.filter(x => !camp(x));
+          const prey = alive.filter(x => !camp(x) && x !== R.partnerOf(g, id));
           const mate = R.activeWolves(g).find(w => w !== id && g.acts.wolves[w]);
           const t = mate ? g.acts.wolves[mate] : (seerClaimer && prey.includes(seerClaimer) ? seerClaimer : pick(prey.length ? prey : others(id)));
           R.wolfAct(g, id, t, { double: R.canDouble(g, id) && (t === seerClaimer || g.night >= 2) && rnd() < 0.7 });
@@ -149,7 +154,7 @@ function playOne(n, cfg) {
           t = seerClaimer && good.includes(seerClaimer) && rnd() < 0.6 ? seerClaimer : pick(good.length ? good : others(v));
         } else {
           // 金宝宝 know each other and never vote a fellow 金宝宝
-          const ok = x => !(rules.win === 'baby' && R.isBaby(g, v) && R.isBaby(g, x));
+          const ok = x => !(rules.win === 'baby' && R.isBaby(g, v) && R.isBaby(g, x)) && x !== R.partnerOf(g, v);
           if (suspect && suspect !== v && ok(suspect) && cand.includes(suspect) && rnd() < 0.85) t = suspect;
           else t = pick(others(v).filter(x => !claimedGood.has(x) && ok(x))) || pick(others(v).filter(ok)) || null;
         }
@@ -220,7 +225,7 @@ let prev = {};
 try { prev = (await import('../src/games/werewolf/balanceTable.js')).BALANCE_TABLE; } catch { /* first run */ }
 
 const combos = [{}];
-for (const key of R.TUNED_KEYS) {
+for (const key of [...R.TUNED_KEYS, 'cupid']) {
   const v = R.VARIANTS.find(x => x.key === key);
   const next = [];
   for (const c of combos) for (const [val] of v.opts) next.push({ ...c, [key]: val });
@@ -238,7 +243,7 @@ for (const combo of MAIN ? combos : []) {
   if (!ALL && !redo && prev[key]) table[key] = prev[key]; // reuse; pass --all to recompute everything
   else {
     table[key] = {};
-    for (let n = R.MIN_PLAYERS; n <= R.MAX_PLAYERS; n++) table[key][n] = tune(n, rules);
+    for (let n = rules.cupid === 'yes' ? R.CUPID_MIN : R.MIN_PLAYERS; n <= R.MAX_PLAYERS; n++) table[key][n] = tune(n, rules);
   }
   const line = `| ${key} | ` + Object.entries(table[key]).map(([, r]) => `狼${r.wolves}${r.gods.map(x => short[x]).join('')} ${r.good}%`).join(' | ') + ' |';
   report.push(line);

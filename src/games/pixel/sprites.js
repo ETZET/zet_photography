@@ -13,6 +13,8 @@ export const PALETTE = {
   m: '#b3bdca',
   c: '#8ff0e8',
   C: '#2bb3b1',
+  p: '#f27aa8',
+  P: '#b03c6e',
 };
 
 export const SPRITES = {
@@ -46,6 +48,16 @@ export const SPRITES = {
     'kyyyyryyyyk',
     'kYYYYYYYYYk',
     'kkkkkkkkkkk',
+  ],
+  // 丘比特 / lovers token: a pink heart
+  heart: [
+    '.kk..kk.',
+    'kppkkppk',
+    'kpwpppPk',
+    'kppppPPk',
+    '.kpppPk.',
+    '..kpPk..',
+    '...kk...',
   ],
   // Lady of the Lake token: a water drop
   lady: [

@@ -11,7 +11,7 @@ import { test, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 
 const OUT = 'test-results/ww-gallery';
-const NAMES = ['村长', '阿花', '铁柱', '小美', '老王', '二狗'];
+const NAMES = ['村长', '阿花', '铁柱', '小美', '老王', '二狗'];  // + 阿强 小红 for 丘比特
 const manifest: { file: string; section: string; title: string; note: string; who: string; view?: string }[] = [];
 let section = '';
 let n = 0;
@@ -102,6 +102,8 @@ test('双身份狼人 screen gallery', async ({ browser }) => {
   await tap(host, '阿花');
   await shot(host, '房主直接换位', '房主点两个座位就能换');
   await tap(host, '小美');
+  await scrollTo(host, 'cupid-mode');
+  await shot(host, '丘比特模式（人不够）', '特殊模式卡片；不到 8 人不能开', { full: false });
   await host.getByTestId('toggle-rules').click();
   await scrollTo(host, 'rule-card');
   await shot(host, '规则说明', '包括发言顺序和平票规则');
@@ -289,6 +291,52 @@ test('双身份狼人 screen gallery', async ({ browser }) => {
     await tap(P('小美'), '老王');
     await shot(P('小美'), `${label} · 投票`, '', { full: false, view: `${w}×${h}` });
   }
+
+  // ------------------------------------------------------------ 丘比特
+  section = '丘比特模式';
+  for (const p of pages) await p.setViewportSize({ width: 390, height: 844 });
+  await host.evaluate(async () => {
+    const { roomStore } = await import('/src/games/avalon/roomStore.js');
+    const w = window as any;
+    await roomStore.update(w.__room.code, (r: any) => { r.phase = 'lobby'; r.game = null; return r; });
+  });
+  for (const name of ['阿强', '小红']) {
+    const p = await ctx.newPage();
+    await p.setViewportSize({ width: 390, height: 844 });
+    await p.goto(`/game/werewolf/${code}?local=1`);
+    await p.getByTestId('name-input').fill(name);
+    await p.getByRole('button', { name: '加入房间' }).click();
+    await expect(p.getByTestId('room-code')).toHaveText(code);
+    pages.push(p);
+    NAMES.push(name);
+  }
+  await host.getByTestId('toggle-cupid').click();
+  await host.waitForTimeout(400);
+  await scrollTo(host, 'cupid-mode');
+  await shot(host, '开启丘比特模式（8 人）', '牌组里多一张丘比特，推荐牌组按模拟调过');
+  const C8 = [['seer', 'villager'], ['wolf', 'villager'], ['villager', 'villager'], ['witch', 'villager'], ['wolf', 'hunter'], ['guard', 'villager'], ['cupid', 'villager'], ['wolf', 'villager']];
+  await stage(host, { hands: C8, rules: { cupid: 'yes' } });
+  await tap(P('阿强'), '铁柱');
+  await tap(P('阿强'), '小红');
+  await shot(P('阿强'), '丘比特连情侣', '第一晚点两个人（可以点自己）');
+  await P('阿强').getByTestId('cupid-act').click();
+  await expect(P('铁柱').getByTestId('love-reveal')).toBeVisible();
+  await shot(P('铁柱'), '被连成情侣', '只有情侣自己看到；人狼恋会说明变成第三方', { full: false });
+  await expect(P('阿强').getByTestId('love-reveal')).toBeVisible();
+  await shot(P('阿强'), '丘比特看到结果', '', { full: false });
+  await P('铁柱').getByTestId('close-love').click();
+  await shot(P('铁柱'), '情侣的圆桌', '情侣和丘比特的圆桌上有爱心');
+  // vote out 小红 for good → 铁柱 殉情
+  await stage(host, { hands: C8, rules: { cupid: 'yes' }, then: "R.cupidAct(g, ids[6], ids[2], ids[7]); R.guardAct(g, ids[5], ids[0]); R.seerAct(g, ids[0], ids[1]); R.wolfAct(g, ids[1], ids[3]); R.wolfAct(g, ids[4], ids[3]); R.wolfAct(g, ids[7], ids[3]); R.witchAct(g, ids[3], {}); R.settleNight(g, Infinity); " + ACK_ALL + " g.dead[ids[7]] = 1; R.startVote(g); R.voters(g).forEach(v => R.castVote(g, v, v === ids[7] ? ids[0] : ids[7]));" });
+  await expect(host.getByTestId('vote-reveal')).toBeVisible();
+  await host.waitForTimeout(2600);
+  await shot(host, '殉情', '投出一个情侣，另一个跟着出局', { full: false });
+  await dismissAll(pages);
+  await shot(P('铁柱'), '殉情确认', '');
+  // love win
+  await stage(host, { hands: C8, rules: { cupid: 'yes' }, then: "R.cupidAct(g, ids[6], ids[2], ids[7]); R.guardAct(g, ids[5], ids[0]); R.seerAct(g, ids[0], ids[1]); R.wolfAct(g, ids[1], ids[3]); R.wolfAct(g, ids[4], ids[3]); R.wolfAct(g, ids[7], ids[3]); R.witchAct(g, ids[3], {}); R.settleNight(g, Infinity); " + ACK_ALL + " [0, 1, 3, 4].forEach(i => { g.dead[ids[i]] = 2; }); g.dead[ids[5]] = 1; R.startVote(g); R.voters(g).forEach(v => R.castVote(g, v, ids[5]));" });
+  await dismissAll(pages);
+  await shot(P('小红'), '情侣胜利', '人狼恋 + 丘比特活到最后');
 
   fs.writeFileSync(`${OUT}/manifest.json`, JSON.stringify(manifest, null, 1));
 });

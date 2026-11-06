@@ -4,12 +4,17 @@ import RoundTable from '../avalon/RoundTable';
 import { Who, WhoList, useConfirm, Confetti } from '../avalon/ui';
 import {
   ROLES, JGL_BLURB, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave,
-  changedRules, isBaby, babies, nextSpeaker, speakerNow, candidates, FORCE_AFTER_MS,
+  changedRules, isBaby, babies, nextSpeaker, speakerNow, candidates, FORCE_AFTER_MS, cupidOf, isLover, partnerOf, thirdParty, cupidAct,
   swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct, ackLoss, settleNight, forceNight, startVote, castVote, nightfall,
   newGame, effectiveConfig,
 } from './wolfRules';
 
 const Title = ({ children }) => <div className="px-title">{children}</div>;
+const WIN = {
+  good: { zh: '好人胜利', cls: 'c-good', confetti: ['#4f7df0', '#8fb0ff', '#f5c542', '#fff6dc'] },
+  wolf: { zh: '狼人胜利', cls: 'c-evil', confetti: ['#e04848', '#ff8a80', '#8b52d6', '#170f22'] },
+  love: { zh: '情侣胜利', cls: 'c-pink', confetti: ['#f27aa8', '#ffd1e6', '#f5c542', '#fff6dc'] },
+};
 const isNight = step => step === 'night' || step === 'witch';
 const SPEAK_HINT_S = 90;
 
@@ -46,10 +51,11 @@ export default function Board({ room, myId, update, busy }) {
   const mine = activeCard(g, myId);
   const [target, setTarget] = useState(null);
   const [mode, setMode] = useState(null); // witch: 'poison'
+  const [pair, setPair] = useState([]); // 丘比特's two picks
   const act = fn => update(r => { fn(r.game); return r; });
   const roomKey = `${room.code}:${room.round}`;
 
-  useEffect(() => { setTarget(null); setMode(null); }, [g.step, g.night]);
+  useEffect(() => { setTarget(null); setMode(null); setPair([]); }, [g.step, g.night]);
   useWakeLock(g.step !== 'end');
 
   // the host's phone ends each night once it's due (clock-driven, so night length leaks nothing)
@@ -67,6 +73,7 @@ export default function Board({ room, myId, update, busy }) {
     if (!isAlive(g, id)) return false;
     switch (g.step) {
       case 'night': {
+        if (task === 'cupid') return true;
         if (task === 'guard') return id !== g.guardLast;
         if (task === 'seer') return id !== myId;
         return task === 'wolf' || (isNightWolf(g, myId) && myId in g.acts.wolves);
@@ -77,7 +84,11 @@ export default function Board({ room, myId, update, busy }) {
       default: return false;
     }
   };
-  const onSeat = id => setTarget(id);
+  const onSeat = id => (task === 'cupid'
+    ? setPair(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id].slice(-2)))
+    : setTarget(id));
+  // lovers and 丘比特 see the hearts; everyone does at the end
+  const seesLove = g.lovers && (isLover(g, myId) || cupidOf(g) === myId || g.step === 'end');
 
   // seer results stay on the seer's own phone, and only while acting at night
   const seerSaw = g.step === 'night' && mine === 'seer'
@@ -102,10 +113,11 @@ export default function Board({ room, myId, update, busy }) {
         <>
           <Lives n={lives(g, id)} />
           {wolfView && wolfMates.includes(id) && id !== myId && <span className="px-tag evil">狼</span>}
+          {seesLove && isLover(g, id) && <PixelSprite name="heart" scale={2} title="情侣" />}
         </>
       ),
       badge,
-      cls: [out && 'out', target === id && 'target'].filter(Boolean).join(' '),
+      cls: [out && 'out', (target === id || pair.includes(id)) && 'target'].filter(Boolean).join(' '),
       role: g.step === 'end' ? ROLES[g.hands[id].cards[0]].sprite : null,
       clickable: pickable(id),
     };
@@ -121,7 +133,7 @@ export default function Board({ room, myId, update, busy }) {
         : <><div className="fs-24 c-gold shadow-px">天亮了</div><div className="fs-12">{g.lastNight?.lost.length ? `${g.lastNight.lost.length} 条命消失` : g.rules?.peace === 'three' ? `平安夜 ${g.peaceStreak}/3` : '平安夜'}</div></>;
       case 'vote': return <><div className="fs-24 c-gold shadow-px">{g.pk ? 'PK 投票' : '放逐投票'}</div><div className="fs-12">{Object.keys(g.votes).length}/{voters(g).length} 已投</div></>;
       case 'dusk': return <><div className="fs-24 c-gold shadow-px">黄昏</div><div className="fs-12 c-dim">{g.dusk?.order.length ? '遗言' : '准备天黑'}</div></>;
-      case 'end': return <><div className={`fs-36 shadow-px ${g.winner === 'good' ? 'c-good' : 'c-evil'}`}>{g.winner === 'good' ? '好人胜利' : '狼人胜利'}</div></>;
+      case 'end': return <><div className={`fs-36 shadow-px ${WIN[g.winner].cls}`}>{WIN[g.winner].zh}</div></>;
       default: return null;
     }
   })();
@@ -141,7 +153,7 @@ export default function Board({ room, myId, update, busy }) {
       <div className="flex flex-col gap-3 sm:gap-6 relative z-[1] min-w-0">
         <div className={`px-frame pad tight ${darkPanel ? 'px-nightpanel' : 'parch'}`} data-testid="action-panel">
           <div key={`${g.step}-${g.night}-${mode}`} className="px-slide">
-            <ActionPanel {...{ g, room, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, task }} />
+            <ActionPanel {...{ g, room, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, task, pair }} />
           </div>
         </div>
         {isHost && isNight(g.step) && <ForceDawn g={g} act={act} busy={busy} />}
@@ -160,7 +172,8 @@ export default function Board({ room, myId, update, busy }) {
       <DawnReveal g={g} roomKey={roomKey} />
       <VoteReveal g={g} roomKey={roomKey} />
       <SeerReveal g={g} myId={myId} roomKey={roomKey} />
-      {g.step === 'end' && <Confetti colors={g.winner === 'good' ? ['#4f7df0', '#8fb0ff', '#f5c542', '#fff6dc'] : ['#e04848', '#ff8a80', '#8b52d6', '#170f22']} />}
+      <LoveReveal g={g} myId={myId} roomKey={roomKey} />
+      {g.step === 'end' && <Confetti colors={WIN[g.winner].confetti} />}
     </div>
   );
 }
@@ -185,6 +198,7 @@ function CardTag({ card }) {
 /** What this player still has to do tonight: their skill first, then the wolf kill. */
 function nightTask(g, id) {
   const card = activeCard(g, id);
+  if (g.rules?.cupid === 'yes' && g.night === 1 && !g.lovers && cupidOf(g) === id && isAlive(g, id)) return 'cupid';
   if (card === 'guard' && !g.acts.guard) return 'guard';
   if (card === 'seer' && !g.acts.seer) return 'seer';
   if (isNightWolf(g, id) && !(id in g.acts.wolves)) return 'wolf';
@@ -282,8 +296,33 @@ function MyHand({ g, myId }) {
           </div>
         )}
         <BabyMates g={g} myId={myId} />
+        <LoversNote g={g} myId={myId} />
       </Peek>
     </div>
+  );
+}
+
+/** 丘比特模式: what the lovers (and 丘比特) know. */
+function loveText(g, myId) {
+  if (!g.lovers) return null;
+  const tp = thirdParty(g);
+  if (isLover(g, myId)) {
+    const mate = partnerOf(g, myId);
+    return { mate, line: tp.length
+      ? '你们一个是好人阵营、一个是狼人阵营（人狼恋），和丘比特一起变成第三方：要活到场上只剩你们自己人。'
+      : `你们都是${isWolfCamp(g, myId) ? '狼人' : '好人'}阵营，继续为本阵营赢。一人出局，另一人殉情。` };
+  }
+  if (cupidOf(g) === myId) return { pair: g.lovers, line: tp.length ? '他们是人狼恋：你和这对情侣组成第三方，要活到只剩你们。' : '他们同阵营，你还是好人阵营。' };
+  return null;
+}
+function LoversNote({ g, myId }) {
+  const t = loveText(g, myId);
+  if (!t) return null;
+  return (
+    <p className="fs-12 mt-2 text-center" data-testid="lovers-note">
+      <span className="px-tag solid pink">{t.mate ? '情侣' : '丘比特'}</span>{' '}
+      {t.mate ? <>另一半：<Who id={t.mate} />。</> : <>你连了 <WhoList ids={t.pair} />。</>}{t.line}
+    </p>
   );
 }
 
@@ -313,7 +352,7 @@ function NightPanel({ title, children, button }) {
 }
 const NightBtn = ({ tone = 'dark', children, ...p }) => <button className={`px-btn ${tone} lg block`} {...p}>{children}</button>;
 
-function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, task }) {
+function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarget, mode, setMode, confirm, task, pair }) {
   const [double, setDouble] = useState(false);
   const alive = isAlive(g, myId);
   const h = g.hands[myId];
@@ -350,6 +389,13 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
 
     case 'night': case 'witch': {
       if (!alive) return <NightPanel title="你已出局">安静观战，不要出声。</NightPanel>;
+      if (task === 'cupid') return (
+        <NightPanel title="丘比特请睁眼" button={<NightBtn tone="pink" disabled={busy || pair.length !== 2} onClick={() => act(x => cupidAct(x, myId, pair[0], pair[1]))} data-testid="cupid-act">
+          {pair.length === 2 ? <>连 <Who id={pair[0]} /> 和 <Who id={pair[1]} /></> : `在圆桌上点两个人（${pair.length}/2）`}</NightBtn>}>
+          选两个人做情侣，可以选自己。一人出局，另一人殉情。
+          {activeCard(g, myId) !== 'cupid' && ' 你的丘比特牌在下面，也照样在第一晚发动。'}
+        </NightPanel>
+      );
       if (task === 'guard') return (
         <NightPanel title="守卫请睁眼" button={<NightBtn tone="blue" disabled={busy || !target} onClick={() => act(x => guardAct(x, myId, target))} data-testid="guard-act">{target ? <>守护 <Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
           选一个人今晚不被狼刀（可以守自己）。{g.guardLast && <>昨晚守了 <Who id={g.guardLast} />，今晚不能再守。</>}
@@ -434,7 +480,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
               </button>
             </div>
           : <NightBtn disabled={busy} onClick={() => act(x => ackLoss(x, myId))} data-testid="ack-loss">知道了</NightBtn>}>
-          <div className="mb-1">失去的是：{mineLost.map((l, i) => <b key={i} className="mr-1">{ROLES[l.card]?.zh}</b>)}{!isAlive(g, myId) && '，你出局了。'}</div>
+          <div className="mb-1">{mineLost.some(l => l.cause === 'love') ? <>你的情侣 <Who id={partnerOf(g, myId)} /> 出局了，你<b className="c-pink">殉情</b>。</> : null}失去的是：{mineLost.map((l, i) => <b key={i} className="mr-1">{ROLES[l.card]?.zh}</b>)}{!isAlive(g, myId) && '，你出局了。'}</div>
           {isHunter && <div className="mb-1">你的猎人牌出局了，可以在圆桌上点一个人开枪，也可以不开。别人看不出你有没有枪。</div>}
           {switchNote(g, myId) && <div>{switchNote(g, myId)}</div>}
         </NightPanel>
@@ -545,13 +591,15 @@ function EndPanel({ g, isHost, update, busy, confirm }) {
   };
   const lobby = () => update(r => { r.phase = 'lobby'; r.game = null; return r; });
   return <>
-    <Title>{g.winner === 'good' ? '好人胜利' : '狼人胜利'}</Title>
+    <Title>{WIN[g.winner].zh}</Title>
     <p className="mb-1">{g.reason}</p>
     <p className="fs-12 mb-3">剩余 狼牌 {s.wolves} · {g.rules?.win === 'baby' ? `金宝宝 ${s.babies} 人` : `村民 ${s.villagers}`} · 神 {s.gods}</p>
     <div className="flex flex-col gap-2 mb-4" data-testid="reveal-all">
       {g.seats.map(id => (
         <div key={id} className="flex items-center gap-2 flex-wrap">
           <Who id={id} tone={isWolfCamp(g, id) ? 'evil' : 'good'} />
+          {isLover(g, id) && <PixelSprite name="heart" scale={2} title="情侣" />}
+          {thirdParty(g).includes(id) && <span className="px-tag pink">第三方</span>}
           {g.hands[id].cards.map((c, i) => (
             <span key={i} className={`px-tag ${ROLES[c].team === 'wolf' ? 'evil' : ROLES[c].god ? 'gold' : 'good'} ${i < g.dead[id] ? 'lost' : ''}`}>{ROLES[c].zh}{i < g.dead[id] ? ' ✕' : ''}</span>
           ))}
@@ -579,6 +627,7 @@ function NightTimeline({ g }) {
         {hs.map(h => (
           <div key={h.night}>
             <b>第 {h.night} 夜：</b>
+            {h.lovers && <>丘比特连了 <Who id={h.lovers[0]} /> 和 <Who id={h.lovers[1]} />；</>}
             {h.guard && <>守卫守 <Who id={h.guard} />；</>}
             {h.seer && <>预言家 <Who id={h.seer.from} /> 验 <Who id={h.seer.to} />（{h.seer.wolf ? '狼' : '好'}）；</>}
             {h.kill ? <>狼{h.double ? '（金刚狼一刀两命）' : ''}刀 <Who id={h.kill} />；</> : '狼没有刀人；'}
@@ -602,14 +651,14 @@ function PublicLog({ g }) {
       <div className="flex flex-col gap-3 px-scroll fs-12" data-testid="log">
         {items.map((e, i) => {
           if (e.type === 'night') return <div key={i}><span className="c-dim">第 {e.night} 夜：</span>{e.lost.length ? groupLost(e.lost).map(l => <span key={l.id} className="mr-1"><Who id={l.id} />{l.cards.map((c, j) => <CardTag key={j} card={c} />)} {l.n > 1 ? '失去两条命' : '失去一条命'}</span>) : '平安夜'}</div>;
-          if (e.type === 'shot') return <div key={i}><span className="c-dim">第 {e.day} 天：</span>{e.from ? <>猎人 <Who id={e.from} /> </> : '有人开枪，'}{e.to ? <>带走了 <Who id={e.to} />{e.card && <CardTag card={e.card} />} 一条命</> : '没有开枪'}</div>;
+          if (e.type === 'shot') return <div key={i}><span className="c-dim">第 {e.day} 天：</span>{e.from ? <>猎人 <Who id={e.from} /> </> : '有人开枪，'}{e.to ? <>带走了 <Who id={e.to} />{e.card && <CardTag card={e.card} />} 一条命</> : '没有开枪'}{e.love && <>，<WhoList ids={e.love} /> 殉情出局</>}</div>;
           if (e.type === 'vote') {
             const by = {};
             Object.entries(e.votes).forEach(([v, t]) => { (by[t || '-'] ||= []).push(v); });
             const rows = Object.entries(by).sort((a, b) => (a[0] === '-') - (b[0] === '-') || b[1].length - a[1].length);
             return (
               <div key={i}>
-                <div><span className="c-dim">第 {e.day} 天{e.pk ? ' PK' : ''}投票：</span>{e.out ? <><Who id={e.out} tone="evil" />{e.card && <CardTag card={e.card} />} 被投出一条命</> : e.tie ? '平票，无人出局' : '全员弃票'}</div>
+                <div><span className="c-dim">第 {e.day} 天{e.pk ? ' PK' : ''}投票：</span>{e.out ? <><Who id={e.out} tone="evil" />{e.card && <CardTag card={e.card} />} 被投出一条命</> : e.tie ? '平票，无人出局' : '全员弃票'}{e.love && <>，<WhoList ids={e.love} /> 殉情出局</>}</div>
                 {rows.map(([t, vs]) => (
                   <div key={t} className="ml-3 c-dim flex flex-wrap items-center gap-x-1">
                     {t === '-' ? <span>弃票</span> : <><Who id={t} /><span>{vs.length} 票</span></>}<span>←</span><WhoList ids={vs} />
@@ -695,7 +744,7 @@ function VoteReveal({ g, roomKey }) {
         </div>
         <div className="px-pop" style={after}>
           {e.out
-            ? <div className="flex items-center gap-2 justify-center"><Who id={e.out} size="lg" tone="evil" /><span className="fs-24 c-evil shadow-px">失去一条命</span>{e.card && <CardTag card={e.card} />}</div>
+            ? <div className="flex flex-col items-center gap-2"><div className="flex items-center gap-2 justify-center"><Who id={e.out} size="lg" tone="evil" /><span className="fs-24 c-evil shadow-px">失去一条命</span>{e.card && <CardTag card={e.card} />}</div>{e.love && <div className="fs-18 c-pink"><WhoList ids={e.love} /> 殉情出局</div>}</div>
             : <div className="fs-24 c-gold shadow-px">{e.tie ? (g.step === 'day' && g.speak?.pk ? '平票，进入 PK' : '平票，无人出局') : '无人出局'}</div>}
         </div>
         <button className="px-btn gold px-pop" style={after} onClick={done} data-testid="close-vote">继续</button>
@@ -721,6 +770,26 @@ function SeerReveal({ g, myId, roomKey }) {
         </div>
         <div className="fs-12 c-dim">{g.rules?.seer === 'camp' ? '验的是阵营' : '提醒：他下面那张牌可能不一样'}</div>
         <button className="px-btn gold" onClick={done} data-testid="close-seer">知道了</button>
+      </div>
+    </div>
+  );
+}
+
+function LoveReveal({ g, myId, roomKey }) {
+  const t = loveText(g, myId);
+  const key = t && g.night === 1 && (g.step === 'night' || g.step === 'witch') ? `ww:love:${roomKey}` : null;
+  const [isDone, done] = useDismissed(key);
+  if (!key || isDone) return null;
+  return (
+    <div className="px-overlay" onClick={done} data-testid="love-reveal">
+      <div className="px-frame pad love flex flex-col items-center gap-4 text-center max-w-[420px] w-full px-pop" onClick={e => e.stopPropagation()}>
+        <Portrait role="cupid" scale={3} className="px-bob" />
+        <div className="fs-12 c-dim">只有你看得到</div>
+        {t.mate
+          ? <><div className="fs-24 c-pink shadow-px">你被丘比特连成了情侣</div><div className="flex items-center gap-2"><PixelSprite name="heart" scale={3} /><Who id={t.mate} size="lg" /></div></>
+          : <><div className="fs-24 c-pink shadow-px">情侣连好了</div><div className="flex items-center gap-2"><Who id={t.pair[0]} size="lg" /><PixelSprite name="heart" scale={3} /><Who id={t.pair[1]} size="lg" /></div></>}
+        <div className="fs-12">{t.line}</div>
+        <button className="px-btn pink" onClick={done} data-testid="close-love">知道了</button>
       </div>
     </div>
   );

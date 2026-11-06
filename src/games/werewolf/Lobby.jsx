@@ -7,7 +7,7 @@ import { requestSwap, answerSwap, cancelSwap, hostSwap, pendingFrom, pendingTo }
 import { Who, useConfirm } from '../avalon/ui';
 import {
   ROLES, ROLE_BLURB, GODS, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildDeck, effectiveConfig, newGame,
-  VARIANTS, DEFAULT_RULES, changedRules, balanceFor, PRESETS, presetRules, presetOf,
+  VARIANTS, DEFAULT_RULES, changedRules, balanceFor, PRESETS, presetRules, presetOf, CUPID_MIN, CUPID_BLURB,
 } from './wolfRules';
 import { addBot } from './bots';
 
@@ -36,7 +36,9 @@ export default function Lobby({ room, myId, update, busy }) {
   const [showRules, setShowRules] = useState(false);
   const preset = presetOf(room.config);
   const [diy, setDiy] = useState(preset === 'custom');
-  const pickPreset = id => isHost && update(r => { r.config = { preset: id, auto: true, rules: presetRules(id) }; return r; });
+  // the 丘比特 mode sits on top of whichever board is picked
+  const withMode = rules => ({ ...rules, cupid: cfg.rules.cupid || 'no' });
+  const pickPreset = id => isHost && update(r => { r.config = { preset: id, auto: true, rules: { ...presetRules(id), cupid: r.config.rules?.cupid || 'no' } }; return r; });
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(inviteLink(room.code)); } catch { /* ignore */ }
@@ -143,7 +145,7 @@ export default function Lobby({ room, myId, update, busy }) {
           {!isHost && <div className="fs-12 c-dim mb-2">由房主选择</div>}
           <div className="flex flex-col">
             {PRESETS.map(p => {
-              const pc = effectiveConfig(tableN, { auto: true, rules: presetRules(p.id) });
+              const pc = effectiveConfig(tableN, { auto: true, rules: withMode(presetRules(p.id)) });
               return { p, pc, pb: balanceOf(tableN, pc) };
             })
               // balanced boards first; boards that can't be balanced at this size sink to the bottom
@@ -185,6 +187,8 @@ export default function Lobby({ room, myId, update, busy }) {
           </button>
           {showRules && <RuleCard tableN={tableN} rules={cfg.rules} />}
         </div>
+
+        <CupidMode rules={cfg.rules} n={n} isHost={isHost} update={update} />
 
         <div className="px-frame pad" data-testid="diy">
           <button className="w-full flex items-center justify-between text-left" onClick={() => setDiy(v => !v)} aria-expanded={diy} data-testid="toggle-diy">
@@ -246,6 +250,7 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
         city: '屠城，好人阵营全部出局。',
         baby: '金宝宝（两张都是村民的人，开局互相认识）全部出局，或好人的神牌全灭。',
       })[rules.win] || '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
+      {rules.cupid === 'yes' && <p><span className="c-pink">丘比特模式：</span>第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。情侣同阵营就照常；人狼恋的情侣和丘比特变成第三方，活到只剩自己人才赢，好人和狼人都要先除掉这对情侣才能赢。</p>}
       <p className="c-dim">
         没有警长，发言顺序由手机决定；{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
         守卫不能连守，同守同救{rules.guardSave === 'dies' ? '会死' : '不死'}{rules.mute === 'yes' ? '；夜里失去第一条命的人当天不能投票' : ''}。
@@ -270,20 +275,49 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
   );
 }
 
+/** 丘比特模式: a special mode with its own big card, like Avalon's 湖中仙女. */
+function CupidMode({ rules, n, isHost, update }) {
+  const on = rules.cupid === 'yes';
+  const tooFew = n < CUPID_MIN;
+  const toggle = () => isHost && update(r => {
+    const cur = { ...DEFAULT_RULES, ...(r.config.rules || {}) };
+    r.config = { ...r.config, rules: { ...cur, cupid: on ? 'no' : 'yes' } };
+    return r;
+  });
+  return (
+    <div className={`px-frame pad px-mode ${on ? 'on' : ''}`} data-testid="cupid-mode">
+      <div className="flex items-center gap-4">
+        <div className="px-portrait-bg shrink-0"><Portrait role="cupid" scale={2.5} className={on ? 'px-bob' : ''} /></div>
+        <div className="min-w-0 flex-1">
+          <div className="fs-12 c-dim tracking-[0.2em]">特殊模式</div>
+          <div className="fs-24 flex items-center gap-2"><PixelSprite name="heart" scale={3} /> 丘比特</div>
+          <div className={`fs-12 mt-1 ${on ? 'c-pink' : 'c-mute'}`}>{on ? '● 已开启' : '○ 关闭'}{tooFew ? `（至少 ${CUPID_MIN} 人才能开）` : ''}</div>
+        </div>
+      </div>
+      <p className="fs-12 c-dim mt-3">{CUPID_BLURB}</p>
+      {isHost && (
+        <button className={`px-btn ${on ? 'dark' : 'pink'} block mt-3`} onClick={toggle} disabled={!on && tooFew} aria-pressed={on} data-testid="toggle-cupid">
+          {on ? '关闭丘比特模式' : tooFew ? `还差 ${CUPID_MIN - n} 人` : '开启丘比特模式'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function VariantPanel({ rules, isHost, update }) {
-  const changed = changedRules(rules).length;
+  const changed = changedRules({ ...rules, cupid: 'no' }).length; // the 丘比特 mode has its own card
   const set = (key, val) => isHost && update(r => { r.config = { ...r.config, preset: 'custom', rules: { ...DEFAULT_RULES, ...(r.config.rules || {}), [key]: val } }; delete r.config.order; return r; });
   return (
     <div data-testid="variants">
       <div className="flex items-center justify-between mb-3">
         <div className="fs-18 c-gold">规则变体</div>
         {changed > 0
-          ? isHost && <button className="px-btn dark sm" onClick={() => update(r => { r.config = { preset: 'standard', auto: true, rules: { ...DEFAULT_RULES } }; return r; })} data-testid="reset-rules">恢复标准</button>
+          ? isHost && <button className="px-btn dark sm" onClick={() => update(r => { r.config = { preset: 'standard', auto: true, rules: { ...DEFAULT_RULES, cupid: r.config.rules?.cupid || 'no' } }; return r; })} data-testid="reset-rules">恢复标准</button>
           : <span className="px-tag">★ 常用规则</span>}
       </div>
       <p className="fs-12 c-dim mb-3">双身份玩法各地不一样，{isHost ? '开局前和大家商量好再选。' : '由房主设置。'}</p>
       <div className="flex flex-col gap-3">
-        {VARIANTS.map(v => {
+        {VARIANTS.filter(v => !v.mode).map(v => {
           const cur = v.opts.find(o => o[0] === rules[v.key]) || v.opts[0];
           return (
             <div key={v.key}>

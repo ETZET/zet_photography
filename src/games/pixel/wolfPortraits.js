@@ -6,6 +6,7 @@
 //   Witch    – wide buckled hat, red hair, green flask + red potion
 //   Hunter   – feathered green cap, beard, leather strap, long rifle
 //   Guard    – plumed iron helm with nose guard, spear, shield with crescent moon
+//   Cupid    – golden curls, white wings, pink sash, drawn bow with a heart-tipped arrow
 import { paint } from './paint';
 
 const K = '#170f22';
@@ -228,6 +229,41 @@ const guard = paint(S, S, p => {
   p.dots([[17, 34], [17, 35], [17, 36]], '#7fb0ff');
 });
 
+const cupid = paint(S, S, p => {
+  // wings behind
+  p.poly([[3, 14], [12, 18], [16, 28], [10, 34], [2, 28], [0, 20]], 'white');
+  p.poly([[45, 14], [36, 18], [32, 28], [38, 34], [46, 28], [47, 20]], 'white');
+  p.dots([[4, 20], [6, 24], [8, 28], [43, 20], [41, 24], [39, 28]], '#aaa39a');
+  // body + pink sash
+  p.poly([[10, 47], [14, 35], [19, 31], [29, 31], [34, 35], [38, 47]], 'skin');
+  p.line(16, 32, 33, 47, 'pink', 3);
+  // head, rosy cheeks, smile
+  p.ellipse(24, 21, 8, 8.5, 'skin');
+  p.dots([[20, 20], [21, 20], [20, 21], [21, 21], [27, 20], [28, 20], [27, 21], [28, 21]], K);
+  p.dots([[20, 20], [27, 20]], '#ffffff');
+  p.dots([[18, 24], [19, 24], [29, 24], [30, 24]], '#f27aa8');
+  p.dots([[22, 26], [23, 27], [24, 27], [25, 27], [26, 26]], '#b03c6e');
+  // golden curls
+  p.ellipse(24, 13, 9, 5, 'gold');
+  p.ellipse(16, 16, 3, 4, 'gold');
+  p.ellipse(32, 16, 3, 4, 'gold');
+  p.dots([[19, 11], [23, 10], [28, 11], [16, 15], [32, 15]], '#ffe88a');
+  // bow (left) with string, arrow with a heart tip
+  p.line(7, 30, 10, 46, 'wood', 2);
+  p.line(7, 30, 4, 38, 'wood', 2);
+  p.line(4, 38, 10, 46, 'wood', 2);
+  p.line(6, 38, 40, 38, 'bone', 1);
+  p.poly([[40, 35], [44, 35], [46, 38], [42, 42], [38, 38]], 'pink');
+  p.dots([[40, 36], [41, 36]], '#ffd1e6');
+  p.dots([[7, 36], [7, 40], [8, 37], [8, 39]], '#ffd1e6');
+  // hands on the bow and the arrow
+  p.ellipse(9, 38, 2, 2, 'skin');
+  p.ellipse(31, 38, 2, 2, 'skin');
+  // floating hearts
+  p.dots([[38, 4], [40, 4], [37, 5], [38, 5], [39, 5], [40, 5], [41, 5], [38, 6], [39, 6], [40, 6], [39, 7]], '#f27aa8');
+  p.dots([[6, 6], [8, 6], [6, 7], [7, 7], [8, 7], [7, 8]], '#f27aa8');
+});
+
 /** Title emblem: a wolf on a rock howling at a full moon. */
 const wolfmoon = paint(S, S, p => {
   p.ellipse(29, 16, 14, 14, 'bone');
@@ -243,4 +279,4 @@ const wolfmoon = paint(S, S, p => {
   p.dots([[4, 6], [9, 3], [3, 15], [44, 34], [40, 40]], '#fff6dc');
 });
 
-export const WOLF_PORTRAITS = { wolf, villager, seer, witch, hunter, guard, wolfmoon };
+export const WOLF_PORTRAITS = { wolf, villager, seer, witch, hunter, guard, cupid, wolfmoon };

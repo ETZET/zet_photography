@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import {
   MAX_PLAYERS, activeCard, alivePlayers, isWolfCamp, isNightWolf, voters, canSelfSave, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
-  ackLoss, castVote, candidates, speakerNow, nextSpeaker,
+  ackLoss, castVote, candidates, speakerNow, nextSpeaker, cupidOf, cupidAct,
 } from './wolfRules';
 
 const IS_DEV = import.meta.env.DEV;
@@ -35,6 +35,12 @@ export function botStep(room) {
       return true;
     }
     case 'night': {
+      const cu = cupidOf(g);
+      if (g.rules?.cupid === 'yes' && g.night === 1 && !g.lovers && cu && isBot(cu)) {
+        const [a, b2] = [...alivePlayers(g)].sort(() => Math.random() - 0.5);
+        cupidAct(g, cu, a, b2);
+        return true;
+      }
       const b = g.seats.find(id => isBot(id) && (
         (role(id) === 'guard' && !g.acts.guard) || (isNightWolf(g, id) && !(id in g.acts.wolves)) || (role(id) === 'seer' && !g.acts.seer)));
       if (!b) return false;

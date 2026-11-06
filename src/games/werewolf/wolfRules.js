@@ -25,9 +25,13 @@ export const ROLES = {
   witch:    { zh: '女巫',  team: 'good', sprite: 'witch', god: true },
   hunter:   { zh: '猎人',  team: 'good', sprite: 'hunter', god: true },
   guard:    { zh: '守卫',  team: 'good', sprite: 'guard', god: true },
+  cupid:    { zh: '丘比特', team: 'good', sprite: 'cupid', god: true },
 };
 export const GODS = ['seer', 'witch', 'hunter', 'guard'];
 
+// 丘比特模式 (special mode, like Avalon's 湖中仙女): one 丘比特 card joins the deck.
+export const CUPID_MIN = 8;
+export const CUPID_BLURB = '加入一张丘比特牌。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。人狼恋的情侣和丘比特变成第三方：活到只剩自己人才赢。';
 export const JGL_BLURB = '金刚狼：两张牌都是狼。整局一次，可以一刀砍掉一个人的两条命，守卫和女巫的解药都挡不住。有一张狼牌出局后就不能再用。';
 
 export const ROLE_BLURB = {
@@ -37,6 +41,7 @@ export const ROLE_BLURB = {
   witch: '一瓶解药、一瓶毒药，整局各一次；同一晚只能用一瓶，不能自救。',
   hunter: '这张牌被刀或被投出局时，可以开枪带走一人的一条命（被毒不能开枪）。',
   guard: '每晚守护一人不被狼刀，不能连续两晚守同一人。同守同救也会死。',
+  cupid: '第一晚连两个人做情侣（可以连自己），不管这张牌在上还是在下都会发动。情侣一人出局，另一人殉情。',
 };
 
 // 2 cards per player → 2n cards. Villagers fill whatever is left.
@@ -62,6 +67,7 @@ export const VARIANTS = [
   { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
   { key: 'mute', zh: '夜里失去第一条命', opts: [['no', '照常投票', ''], ['yes', '当天不能投票', '第二天恢复']] },
   { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['baby', '金宝宝', '两张都是村民的人（金宝宝）全部出局，或好人的神牌全灭'], ['city', '屠城', '好人阵营全部出局']] },
+  { key: 'cupid', mode: true, zh: '丘比特模式', opts: [['no', '关闭', ''], ['yes', '开启', CUPID_BLURB]] },
   { key: 'pk', zh: '平票', opts: [['no', '无人出局', ''], ['yes', 'PK 再投', '平票的人再各说一轮，其他人再投一次；再平票无人出局']] },
   { key: 'peace', zh: '连续平安夜', opts: [['no', '不算', ''], ['three', '三晚好人胜', '连续三个晚上没有人失去命，好人直接获胜']] },
 ];
@@ -86,13 +92,13 @@ export function presetOf(cfg = {}) {
   if (cfg.preset) return cfg.preset;
   const rules = rulesOf(cfg);
   if (cfg.auto === false) return 'custom';
-  const hit = PRESETS.find(p => VARIANTS.every(v => presetRules(p.id)[v.key] === rules[v.key]));
+  const hit = PRESETS.find(p => VARIANTS.every(v => v.mode || presetRules(p.id)[v.key] === rules[v.key]));
   return hit ? hit.id : 'custom';
 }
 
 // House rules that shift balance a lot; the recommended deck is pre-tuned for each combination.
 export const TUNED_KEYS = ['order', 'wake', 'doubleWolf', 'mute', 'win'];
-export const tableKey = rules => TUNED_KEYS.map(k => rules[k]).join('|');
+export const tableKey = rules => TUNED_KEYS.map(k => rules[k]).join('|') + (rules.cupid === 'yes' ? '|cupid' : '');
 /** Pre-computed recommendation + simulated good win rate, or null. */
 export const balanceFor = (n, rules) => BALANCE_TABLE?.[tableKey(rules)]?.[n] || null;
 
@@ -106,12 +112,14 @@ export function effectiveConfig(n, cfg = {}) {
 }
 
 export function buildDeck(n, cfg) {
-  const villagers = 2 * n - cfg.wolves - cfg.gods.length;
+  const cupid = cfg.rules?.cupid === 'yes' ? ['cupid'] : [];
+  const villagers = 2 * n - cfg.wolves - cfg.gods.length - cupid.length;
   if (cfg.wolves < 1) return { error: '至少要 1 张狼牌' };
   if (cfg.wolves > n - 1) return { error: '狼牌太多了' };
+  if (cfg.rules?.cupid === 'yes' && n < CUPID_MIN) return { error: `丘比特模式至少要 ${CUPID_MIN} 人` };
   if (cfg.rules?.doubleWolf === 'force' && cfg.wolves < 3) return { error: '金刚狼局至少要 3 张狼牌（金刚狼 + 一个狼队友）' };
   if (villagers < 1) return { error: '至少要留 1 张村民牌' };
-  return { cards: [...Array(cfg.wolves).fill('wolf'), ...cfg.gods, ...Array(villagers).fill('villager')], villagers };
+  return { cards: [...Array(cfg.wolves).fill('wolf'), ...cfg.gods, ...cupid, ...Array(villagers).fill('villager')], villagers };
 }
 
 const shuffle = arr => {
@@ -165,6 +173,7 @@ export function newGame(players, cfg) {
     hunter: null,
     winner: null,
     jglUsed: false,
+    lovers: null,
     peaceStreak: 0,
     timeScale: cfg.timeScale ?? 1,
   };
@@ -193,13 +202,27 @@ export const canDouble = (g, id) => isJgl(g, id) && g.dead[id] === 0 && !g.jglUs
 /** 金宝宝: both cards are villagers. They know each other from the start (金宝宝 variant). */
 export const isBaby = (g, id) => g.hands[id].cards.every(c => c === 'villager');
 export const babies = g => g.seats.filter(id => isBaby(g, id));
+/** 丘比特: whoever holds the card links two lovers on night 1, whichever way up the card is. */
+export const cupidOf = g => g.seats.find(id => g.hands[id].cards.includes('cupid')) || null;
+export const isLover = (g, id) => !!g.lovers?.includes(id);
+export const partnerOf = (g, id) => (isLover(g, id) ? g.lovers.find(x => x !== id) : null);
+/** 人狼恋: lovers from different camps (+ 丘比特 if not a lover) become a third party. */
+export function thirdParty(g) {
+  if (!g.lovers) return [];
+  const [a, b] = g.lovers;
+  if (isWolfCamp(g, a) === isWolfCamp(g, b)) return [];
+  const c = cupidOf(g);
+  return [...new Set([a, b, ...(c ? [c] : [])])];
+}
+const loversAlive = g => !!g.lovers && g.lovers.every(id => isAlive(g, id));
 export const voters = g => alivePlayers(g).filter(id => !isMuted(g, id) && !(g.pk || []).includes(id));
 
 function goodCampCards(g) {
   let villagers = 0;
   let gods = 0;
+  const tp = loversAlive(g) ? thirdParty(g) : [];
   for (const id of g.seats) {
-    if (isWolfCamp(g, id)) continue;
+    if (isWolfCamp(g, id) || tp.includes(id)) continue;
     g.hands[id].cards.slice(g.dead[id]).forEach(c => { if (c === 'villager') villagers++; else gods++; });
   }
   return { villagers, gods };
@@ -254,7 +277,16 @@ export function nightPending(g) {
   holders(g, 'guard').forEach(id => { if (!a.guard) out.push(id); });
   activeWolves(g).forEach(id => { if (!(id in a.wolves)) out.push(id); });
   holders(g, 'seer').forEach(id => { if (!a.seer) out.push(id); });
+  const c = cupidOf(g);
+  if (R(g).cupid === 'yes' && g.night === 1 && c && !g.lovers && isAlive(g, c)) out.push(c);
   return out;
+}
+
+export function cupidAct(g, id, a, b) {
+  must(g.step === 'night' && g.night === 1 && cupidOf(g) === id && !g.lovers, '现在不能连情侣');
+  must(a && b && a !== b && isAlive(g, a) && isAlive(g, b), '选两个不同的人');
+  g.lovers = [a, b];
+  advanceNight(g);
 }
 
 export const witchCanAct = g => holders(g, 'witch').length > 0 && (g.potions.save || g.potions.poison);
@@ -355,8 +387,13 @@ function loseLife(g, id, cause, when) {
   g.dead[id] += 1;
   g.graveyard.push({ id, card, cause, ...when });
   g.lostNow = [...(g.lostNow || []), { id, card, cause }];
+  // 殉情: when a lover is out for good, the other one goes too
+  const mate = !isAlive(g, id) && partnerOf(g, id);
+  if (mate && isAlive(g, mate)) while (isAlive(g, mate)) loseLife(g, mate, 'love', when);
   return card;
 }
+
+const loveDeaths = g => { const ids = [...new Set((g.lostNow || []).filter(l => l.cause === 'love').map(l => l.id))]; return ids.length ? ids : undefined; };
 
 function resolveNight(g) {
   const a = g.acts;
@@ -373,9 +410,11 @@ function resolveNight(g) {
   }
   if (a.save) g.potions.save = false;
   if (a.poison) { g.potions.poison = false; lost.push({ id: a.poison, card: loseLife(g, a.poison, 'poison', when) }); }
+  (g.lostNow || []).filter(l => l.cause === 'love').forEach(l => lost.push({ id: l.id, card: l.card }));
   g.history = [...(g.history || []), {
     night: g.night, guard: a.guard, wolves: { ...a.wolves }, kill: a.kill, double: a.doubleKill || undefined,
     save: a.save ? a.kill : null, poison: a.poison, seer: g.seerLog.find(l => l.night === g.night) || null, forced: a.forced || undefined,
+    lovers: g.night === 1 && g.lovers ? [...g.lovers] : undefined,
   }];
   g.muted = lost.map(l => l.id).filter(id => g.dead[id] === 1);
   if (R(g).reveal !== 'show') lost.forEach(l => { delete l.card; });
@@ -397,7 +436,7 @@ function afterLoss(g, then) {
   if (checkWin(g)) return;
   const ids = [...new Set(lost.map(l => l.id))];
   if (!ids.length) { proceed(g, then); return; }
-  const hunter = lost.find(l => l.card === 'hunter' && l.cause !== 'poison' && !g.hunterUsed)?.id || null;
+  const hunter = lost.find(l => l.card === 'hunter' && l.cause !== 'poison' && l.cause !== 'love' && !g.hunterUsed)?.id || null;
   g.confirm = { ids, acked: {}, hunter, then, lost };
   g.step = 'confirm';
 }
@@ -423,7 +462,7 @@ export function ackLoss(g, id, { shoot = null } = {}) {
     if (shoot) {
       const card = loseLife(g, shoot, 'shot', { day: g.day });
       const show = R(g).reveal === 'show';
-      g.log.push({ type: 'shot', day: g.day, from: show ? id : undefined, to: shoot, card: show ? card : undefined });
+      g.log.push({ type: 'shot', day: g.day, from: show ? id : undefined, to: shoot, card: show ? card : undefined, love: loveDeaths(g) });
       if (checkWin(g)) return;
       const extra = (g.lostNow || []).map(l => l.id).filter(x => !c.ids.includes(x));
       c.ids.push(...extra);
@@ -508,7 +547,7 @@ export function castVote(g, id, target) {
   const out = top.length === 1 ? top[0] : null;
   const tie = top.length > 1;
   const card = out ? loseLife(g, out, 'vote', { day: g.day }) : null;
-  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie, pk: !!g.pk || undefined, card: R(g).reveal === 'show' ? card : undefined });
+  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie, pk: !!g.pk || undefined, card: R(g).reveal === 'show' ? card : undefined, love: loveDeaths(g) });
   if (tie && R(g).pk === 'yes' && !g.pk) {
     // PK: the tied players speak again, everyone else votes once more
     g.pk = top;
@@ -543,7 +582,11 @@ function checkWin(g) {
   let winner = null;
   let reason = '';
   const win = R(g).win;
-  if (s.wolves === 0) { winner = 'good'; reason = '所有狼牌都出局了'; }
+  const tp = thirdParty(g);
+  const tpAlive = tp.length > 0 && loversAlive(g);
+  if (tpAlive && alivePlayers(g).every(id => tp.includes(id))) { winner = 'love'; reason = '人狼恋：场上只剩情侣（和丘比特）'; }
+  else if (tpAlive) { /* the couple must go before good or wolves can win */ }
+  else if (s.wolves === 0) { winner = 'good'; reason = '所有狼牌都出局了'; }
   else if (R(g).peace === 'three' && g.peaceStreak >= 3) { winner = 'good'; reason = '连续三个平安夜'; }
   else if (win === 'city') { if (s.villagers + s.gods === 0) { winner = 'wolf'; reason = '屠城：好人阵营全部出局'; } }
   else if (win === 'baby' && s.babies === 0) { winner = 'wolf'; reason = '金宝宝全部出局'; }
@@ -556,4 +599,4 @@ function checkWin(g) {
   return true;
 }
 
-export const CAUSE_ZH = { wolf: '被狼刀', poison: '被毒', vote: '被投出', shot: '被猎人带走' };
+export const CAUSE_ZH = { wolf: '被狼刀', poison: '被毒', vote: '被投出', shot: '被猎人带走', love: '殉情' };

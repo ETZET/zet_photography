@@ -30,6 +30,7 @@ export const MATS = {
   glow:   ['#ffffff', '#bff4ff', '#5fcff5'],
   magic:  ['#ffe6ff', '#e08cff', '#9b3fd6'],
   stone:  ['#a7a3b8', '#757087', '#4c475c'],
+  pink:   ['#ffd1e6', '#f27aa8', '#b03c6e'],
 };
 
 export function paint(w, h, draw, { outline = OUTLINE, shade = true } = {}) {

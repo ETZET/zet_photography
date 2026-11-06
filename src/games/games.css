@@ -355,3 +355,10 @@
 @media (max-width: 640px) { .px-nightbox { min-height: 150px; } }
 /* disabled night buttons must look like enabled ones from across the table */
 .px-btn.night:disabled { filter: none; opacity: 0.9; }
+
+/* 丘比特 */
+.c-pink { color: #f27aa8; }
+.px-btn.pink { --b: #f27aa8; --b-lo: #b03c6e; --b-hi: #ffd1e6; --t: #2a0a18; }
+.px-tag.pink { background: #f27aa8; color: #2a0a18; }
+.px-mode.on { box-shadow: 0 -3px 0 0 var(--line), 0 3px 0 0 var(--line), -3px 0 0 0 var(--line), 3px 0 0 0 var(--line), inset 0 0 0 3px #f27aa8; }
+.px-overlay .px-frame.love { box-shadow: 0 -4px 0 0 var(--line), 0 4px 0 0 var(--line), -4px 0 0 0 var(--line), 4px 0 0 0 var(--line), inset 0 0 0 4px #f27aa8; }
