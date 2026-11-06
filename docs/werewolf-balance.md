@@ -150,3 +150,5 @@
 | random|all|force|yes|baby|cupid | 狼3预女守 39% | 狼3预女猎守 49% | 狼3预女 55% |
 | random|all|force|yes|city | 狼3预女猎守 9% | 狼3预女猎守 22% | 狼3预女猎守 34% | 狼3预女猎守 48% | 狼3预女 57% | 狼4预女守 30% |
 | random|all|force|yes|city|cupid | 狼3预女守 42% | 狼3预女猎 54% | 狼3预女猎 64% |
+| choose|top|half|no|babyOnly|sj|nb|p3 | 狼3预女猎 62% | 狼4预女守 41% | 狼4预女猎守 59% |
+| choose|top|half|no|babyOnly|cupid|sj|nb|p3 | 狼3预女猎 50% | 狼4预女 35% | 狼4预女猎守 50% |

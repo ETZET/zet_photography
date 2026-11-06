@@ -4,7 +4,7 @@ import RoundTable from '../avalon/RoundTable';
 import { Who, WhoList, useConfirm, Confetti } from '../avalon/ui';
 import {
   ROLES, JGL_BLURB, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave,
-  changedRules, isBaby, babies, nextSpeaker, speakerNow, candidates, FORCE_AFTER_MS, cupidOf, isLover, partnerOf, thirdParty, cupidAct,
+  changedRules, isBaby, babies, isBabyWin, nextSpeaker, speakerNow, candidates, FORCE_AFTER_MS, cupidOf, isLover, partnerOf, thirdParty, cupidAct,
   swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct, ackLoss, settleNight, forceNight, startVote, castVote, nightfall,
   newGame, effectiveConfig,
 } from './wolfRules';
@@ -328,8 +328,15 @@ function LoversNote({ g, myId }) {
 
 /** 金宝宝 variant: players holding two villager cards know each other from the start. */
 function BabyMates({ g, myId }) {
-  if (g.rules?.win !== 'baby' || !isBaby(g, myId)) return null;
+  if (!isBabyWin(g.rules) || !isBaby(g, myId)) return null;
   const mates = babies(g).filter(id => id !== myId);
+  if (g.rules.babyMeet === 'no') {
+    return (
+      <p className="fs-12 mt-2 text-center" data-testid="baby-mates">
+        <span className="px-tag solid gold">金宝宝（双民）</span>{' '}本局金宝宝不互认，你不知道还有谁。金宝宝全部出局狼人就赢。
+      </p>
+    );
+  }
   return (
     <p className="fs-12 mt-2 text-center" data-testid="baby-mates">
       <span className="px-tag solid gold">金宝宝（双民）</span>{' '}
@@ -371,7 +378,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
           <p className="fs-12 mb-1 text-center">
             <span className={`px-tag solid ${hasWolf ? 'evil' : 'good'}`}>{hasWolf ? (isJgl(g, myId) ? '金刚狼' : '狼人阵营') : '好人阵营'}</span>{' '}
             {hasWolf
-              ? (isJgl(g, myId) ? JGL_BLURB : g.rules?.wake === 'all' ? '本局狼牌在下面也能睁眼刀人，可以把另一张放上面伪装。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。')
+              ? (isJgl(g, myId) ? JGL_BLURB + (g.rules?.seer === 'campJgl' ? '本局预言家验你会显示好人。' : '') : g.rules?.wake === 'all' ? '本局狼牌在下面也能睁眼刀人，可以把另一张放上面伪装。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。')
               : '有技能的牌放上面就能先用技能。'}
           </p>
           <BabyMates g={g} myId={myId} />
@@ -593,7 +600,7 @@ function EndPanel({ g, isHost, update, busy, confirm }) {
   return <>
     <Title>{WIN[g.winner].zh}</Title>
     <p className="mb-1">{g.reason}</p>
-    <p className="fs-12 mb-3">剩余 狼牌 {s.wolves} · {g.rules?.win === 'baby' ? `金宝宝 ${s.babies} 人` : `村民 ${s.villagers}`} · 神 {s.gods}</p>
+    <p className="fs-12 mb-3">剩余 狼牌 {s.wolves} · {isBabyWin(g.rules) ? `金宝宝 ${s.babies} 人` : `村民 ${s.villagers}`} · 神 {s.gods}</p>
     <div className="flex flex-col gap-2 mb-4" data-testid="reveal-all">
       {g.seats.map(id => (
         <div key={id} className="flex items-center gap-2 flex-wrap">

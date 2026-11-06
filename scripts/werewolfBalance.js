@@ -93,7 +93,7 @@ function playOne(n, cfg) {
           const prey = alive.filter(x => !camp(x) && x !== R.partnerOf(g, id));
           const mate = R.activeWolves(g).find(w => w !== id && g.acts.wolves[w]);
           const t = mate ? g.acts.wolves[mate] : (seerClaimer && prey.includes(seerClaimer) ? seerClaimer : pick(prey.length ? prey : others(id)));
-          R.wolfAct(g, id, t, { double: R.canDouble(g, id) && (t === seerClaimer || g.night >= 2) && rnd() < 0.7 });
+          R.wolfAct(g, id, t, { double: R.canDouble(g, id) && !rules.noSkill && (t === seerClaimer || g.night >= 2) && rnd() < 0.7 });
         }
         break;
       }
@@ -154,7 +154,7 @@ function playOne(n, cfg) {
           t = seerClaimer && good.includes(seerClaimer) && rnd() < 0.6 ? seerClaimer : pick(good.length ? good : others(v));
         } else {
           // 金宝宝 know each other and never vote a fellow 金宝宝
-          const ok = x => !(rules.win === 'baby' && R.isBaby(g, v) && R.isBaby(g, x)) && x !== R.partnerOf(g, v);
+          const ok = x => !(R.isBabyWin(rules) && rules.babyMeet !== 'no' && R.isBaby(g, v) && R.isBaby(g, x)) && x !== R.partnerOf(g, v);
           if (suspect && suspect !== v && ok(suspect) && cand.includes(suspect) && rnd() < 0.85) t = suspect;
           else t = pick(others(v).filter(x => !claimedGood.has(x) && ok(x))) || pick(others(v).filter(ok)) || null;
         }
@@ -198,7 +198,7 @@ function tune(n, rules) {
   const grid = {}; // `${wolves}:${mask}` → good win %
   let best = null;
   // 金刚狼 boards need a second wolf player, or the lone wolf is caught by the first check
-  const minWolves = rules.doubleWolf === 'force' ? 3 : 1;
+  const minWolves = ['force', 'half'].includes(rules.doubleWolf) ? 3 : 1;
   for (let wolves = minWolves; wolves <= Math.ceil(n / 2); wolves++) {
     for (const m of MASKS) {
       const gods = godsOf(m);
@@ -228,22 +228,26 @@ const combos = [{}];
 for (const key of [...R.TUNED_KEYS, 'cupid']) {
   const v = R.VARIANTS.find(x => x.key === key);
   const next = [];
-  for (const c of combos) for (const [val] of v.opts) next.push({ ...c, [key]: val });
+  // options flagged as extras (4th field) only appear in presets, not in the full grid
+  for (const c of combos) for (const [val, , , extra] of v.opts) if (!extra) next.push({ ...c, [key]: val });
   combos.splice(0, combos.length, ...next);
 }
+// presets built on extra options (村规金宝宝), with and without 丘比特
+for (const p of R.PRESETS.filter(x => x.min)) for (const cupid of ['no', 'yes']) combos.push({ ...p.rules, cupid, min: p.min });
 
 const table = {};
 const report = [];
 const t0 = Date.now();
 const short = { seer: '预', witch: '女', hunter: '猎', guard: '守' };
 for (const combo of MAIN ? combos : []) {
-  const rules = { ...R.DEFAULT_RULES, ...combo };
+  const { min = 0, ...rest } = combo;
+  const rules = { ...R.DEFAULT_RULES, ...rest };
   const key = R.tableKey(rules);
   const redo = REDO.some(([k, v]) => rules[k] === v);
   if (!ALL && !redo && prev[key]) table[key] = prev[key]; // reuse; pass --all to recompute everything
   else {
     table[key] = {};
-    for (let n = rules.cupid === 'yes' ? R.CUPID_MIN : R.MIN_PLAYERS; n <= R.MAX_PLAYERS; n++) table[key][n] = tune(n, rules);
+    for (let n = Math.max(min, rules.cupid === 'yes' ? R.CUPID_MIN : R.MIN_PLAYERS); n <= R.MAX_PLAYERS; n++) table[key][n] = tune(n, rules);
   }
   const line = `| ${key} | ` + Object.entries(table[key]).map(([, r]) => `狼${r.wolves}${r.gods.map(x => short[x]).join('')} ${r.good}%`).join(' | ') + ' |';
   report.push(line);

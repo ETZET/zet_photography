@@ -8,6 +8,7 @@ import { Who, useConfirm } from '../avalon/ui';
 import {
   ROLES, ROLE_BLURB, GODS, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildDeck, effectiveConfig, newGame,
   VARIANTS, DEFAULT_RULES, changedRules, balanceFor, PRESETS, presetRules, presetOf, CUPID_MIN, CUPID_BLURB,
+  isBabyWin, jglPossible, JGL_BLURB,
 } from './wolfRules';
 import { addBot } from './bots';
 
@@ -27,10 +28,15 @@ export default function Lobby({ room, myId, update, busy }) {
   const confirm = useConfirm();
   const isHost = room.hostId === myId;
   const n = room.players.length;
-  const tableN = Math.min(Math.max(n, MIN_PLAYERS), MAX_PLAYERS);
+  // the host can preview a planned head count before everyone has joined
+  const plan = room.plan || null;
+  const tableN = Math.min(Math.max(plan ?? n, MIN_PLAYERS), MAX_PLAYERS);
   const cfg = effectiveConfig(tableN, room.config);
   const deck = buildDeck(tableN, cfg);
   const missing = Math.max(0, MIN_PLAYERS - n);
+  // what a start right now would actually deal (the real head count)
+  const realDeck = n >= MIN_PLAYERS ? buildDeck(n, effectiveConfig(n, room.config)) : null;
+  const setPlan = v => isHost && update(r => { r.plan = v; return r; });
   const bal = deck.error ? null : balanceOf(tableN, cfg);
   const [copied, setCopied] = useState(false);
   const [showRules, setShowRules] = useState(false);
@@ -74,6 +80,11 @@ export default function Lobby({ room, myId, update, busy }) {
     if (ok) update(r => { r.players = r.players.filter(p => p.id !== id); return r; });
   };
   const start = async () => {
+    if (plan && plan !== n && !await confirm({
+      title: '人数和预计的不一样',
+      body: <>预计 {plan} 人，现在 {n} 人。开局会按 <b>{n} 人</b>的推荐配置配牌{cfg.auto === false ? '（自定义牌组照用）' : ''}。</>,
+      ok: `按 ${n} 人开局`, cancel: '再等等',
+    })) return;
     if (bal?.level === 'extreme' && !await confirm({
       title: '配置非常不平衡',
       body: <>模拟估算好人胜率{bal.good > 50 ? '高达' : '只有'}约 <b>{bal.approx ? '<10' : bal.good}%</b>{bal.good > 50 ? '（好人几乎必胜）' : '（狼人几乎必胜）'}。<div className="fs-12 c-dim mt-2">{bal.rec ? '这套规则在这个人数下很难配平，可以换一个板子。' : '可以选一个常用板子，牌组是调好的。'}确定还是用这个配置开局吗？</div></>,
@@ -141,19 +152,20 @@ export default function Lobby({ room, myId, update, busy }) {
       <div className="flex flex-col gap-6">
         <div className="px-frame pad" data-testid="presets">
           <div className="px-title">{isHost ? '选择板子' : '本局板子'} · {tableN} 人</div>
-          {n < MIN_PLAYERS && <div className="fs-12 c-mute mb-2">按 {tableN} 人预览</div>}
+          <PlanPicker plan={plan} n={n} isHost={isHost} setPlan={setPlan} />
           {!isHost && <div className="fs-12 c-dim mb-2">由房主选择</div>}
           <div className="flex flex-col">
             {PRESETS.map(p => {
               const pc = effectiveConfig(tableN, { auto: true, rules: withMode(presetRules(p.id)) });
-              return { p, pc, pb: balanceOf(tableN, pc) };
+              const short = !!p.min && tableN < p.min;
+              return { p, pc, short, pb: short ? null : balanceOf(tableN, pc) };
             })
-              // balanced boards first; boards that can't be balanced at this size sink to the bottom
-              .sort((a, b) => (a.pb?.level !== 'ok') - (b.pb?.level !== 'ok'))
+              // balanced boards first; boards that can't be balanced (or need more players) sink to the bottom
+              .sort((a, b) => ((a.short || a.pb?.level !== 'ok') - (b.short || b.pb?.level !== 'ok')))
               .filter(({ p }) => isHost || preset === p.id)
-              .map(({ p, pc, pb }) => {
+              .map(({ p, pc, pb, short }) => {
               const on = preset === p.id;
-              const off = pb && pb.level !== 'ok';
+              const off = short || (pb && pb.level !== 'ok');
               return (
                 <button key={p.id} className={`px-role row good ${on ? 'on' : ''} ${off && !on ? 'opacity-60' : ''}`} disabled={!isHost} aria-pressed={on}
                   onClick={() => pickPreset(p.id)} data-testid={`preset-${p.id}`}>
@@ -163,8 +175,9 @@ export default function Lobby({ room, myId, update, busy }) {
                       {pb && <span className={`fs-12 ${pb.level === 'ok' ? 'c-dim' : 'c-evil'}`}>好人胜率 ≈{pb.good}%{pb.level !== 'ok' && <PixelSprite name="warn" scale={2} className="inline-block align-[-2px] ml-1" />}</span>}
                     </span>
                     <span className="fs-12 c-dim">{p.desc}</span>
-                    {off && <span className="fs-12 c-evil">{tableN} 人时{pb.good > 50 ? '偏好人' : '偏狼人'}，换个人数或板子更好</span>}
-                    <span className="fs-12 leading-loose"><DeckLine deck={buildDeck(tableN, pc).cards || []} /></span>
+                    {short && <span className="fs-12 c-evil" data-testid={`preset-min-${p.id}`}>至少 {p.min} 人才能玩，现在按 {tableN} 人</span>}
+                    {off && !short && <span className="fs-12 c-evil">{tableN} 人时{pb.good > 50 ? '偏好人' : '偏狼人'}，换个人数或板子更好</span>}
+                    {!short && <span className="fs-12 leading-loose"><DeckLine deck={buildDeck(tableN, pc).cards || []} /></span>}
                   </span>
                 </button>
               );
@@ -181,6 +194,7 @@ export default function Lobby({ room, myId, update, busy }) {
 
           {deck.cards && <div className="fs-12 c-dim mt-3 leading-loose" data-testid="deck">本局：<DeckLine deck={deck.cards} /></div>}
           {deck.error && <div className="px-tag evil fs-12 mt-3">{deck.error}</div>}
+          {!deck.error && realDeck?.error && <div className="px-tag evil fs-12 mt-3" data-testid="real-deck-error">现在 {n} 人还开不了：{realDeck.error}</div>}
           <BalanceBar bal={bal} auto={cfg.auto} />
           <button className="underline fs-12 c-dim mt-3" onClick={() => setShowRules(v => !v)} data-testid="toggle-rules">
             {showRules ? '收起规则' : '查看本局规则 / 各人数推荐'}
@@ -188,7 +202,7 @@ export default function Lobby({ room, myId, update, busy }) {
           {showRules && <RuleCard tableN={tableN} rules={cfg.rules} />}
         </div>
 
-        <CupidMode rules={cfg.rules} n={n} isHost={isHost} update={update} />
+        <CupidMode rules={cfg.rules} n={tableN} isHost={isHost} update={update} />
 
         <div className="px-frame pad" data-testid="diy">
           <button className="w-full flex items-center justify-between text-left" onClick={() => setDiy(v => !v)} aria-expanded={diy} data-testid="toggle-diy">
@@ -227,7 +241,7 @@ export default function Lobby({ room, myId, update, busy }) {
 
         {isHost ? (
           <div className="px-sticky-cta">
-            <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!deck.error} onClick={start} data-testid="start-game">
+            <button className="px-btn gold lg block" disabled={busy || missing > 0 || !!deck.error || !!realDeck?.error} onClick={start} data-testid="start-game">
               {missing > 0 ? `还差 ${missing} 人` : `发牌开局 · ${PRESETS.find(p => p.id === preset)?.zh || '自定义'}`}
             </button>
           </div>
@@ -240,16 +254,18 @@ export default function Lobby({ room, myId, update, busy }) {
 }
 
 export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
-  const camp = rules.seer === 'camp';
+  const camp = rules.seer === 'camp' || rules.seer === 'campJgl';
   return (
     <div className="fs-12 leading-relaxed mt-3 flex flex-col gap-2" data-testid="rule-card">
       <p><span className="c-gold">两张牌 = 两条命。</span>上面那张是你当前的身份，它出局后下面那张才生效。{rules.order === 'random' ? '本局顺序随机，不能调换。' : '发牌后自己排顺序。'}</p>
       <p><span className="c-evil">有一张狼牌就是狼人阵营。</span>{rules.wake === 'all' ? '狼牌不管在上面还是下面，晚上都睁眼刀人。' : '只有翻在上面的狼牌晚上能睁眼刀人。'}</p>
-      <p>预言家验到的是{camp ? <span className="c-gold">阵营</span> : <span className="c-gold">当前那张牌</span>}。{rules.reveal === 'show' ? '失去一条命时亮出那张牌。' : '出局只公布少了一条命，不亮牌。'}</p>
+      <p>预言家验到的是{camp ? <span className="c-gold">阵营</span> : <span className="c-gold">当前那张牌</span>}{rules.seer === 'campJgl' ? '，但金刚狼验出来是好人' : ''}。{rules.reveal === 'show' ? '失去一条命时亮出那张牌。' : '出局只公布少了一条命，不亮牌。'}</p>
       <p>好人：所有狼牌出局{rules.peace === 'three' ? '，或连续三个平安夜' : ''}。狼人：{({
         city: '屠城，好人阵营全部出局。',
-        baby: '金宝宝（两张都是村民的人，开局互相认识）全部出局，或好人的神牌全灭。',
+        baby: `金宝宝（两张都是村民的人，${rules.babyMeet === 'no' ? '开局不互认' : '开局互相认识'}）全部出局，或好人的神牌全灭。`,
+        babyOnly: `只看金宝宝（两张都是村民的人，每局 1–3 个，${rules.babyMeet === 'no' ? '开局不互认' : '开局互相认识'}）：金宝宝全部出局才赢，神、民全灭都不算。`,
       })[rules.win] || '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
+      {jglPossible(rules) && <p><span className="c-evil">金刚狼：</span>{({ maybe: '发牌时可能有人拿到两张狼牌。', force: '保证有一人拿两张狼牌。', half: '一半的局有一人拿两张狼牌，没人知道这局有没有。' })[rules.doubleWolf]}{JGL_BLURB.replace(/^金刚狼：/, '')}</p>}
       {rules.cupid === 'yes' && <p><span className="c-pink">丘比特模式：</span>第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。情侣同阵营就照常；人狼恋的情侣和丘比特变成丘比特阵营，活到只剩自己人才赢，好人和狼人都要先除掉这对情侣才能赢；情侣殉情后丘比特不回好人阵营。</p>}
       <p className="c-dim">
         没有警长，发言顺序由手机决定；{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
@@ -276,6 +292,26 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
 }
 
 /** 丘比特模式: a special mode with its own big card, like Avalon's 湖中仙女. */
+function PlanPicker({ plan, n, isHost, setPlan }) {
+  const counts = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, i) => MIN_PLAYERS + i);
+  const note = plan
+    ? (plan === n ? `人到齐了：${n} 人。` : `预计 ${plan} 人，现在 ${n} 人。下面的推荐按 ${plan} 人显示，开局按实际人数配牌。`)
+    : n < MIN_PLAYERS ? `现在 ${n} 人，按 ${MIN_PLAYERS} 人预览。` : '跟着房间里的实际人数走。';
+  if (!isHost) return plan ? <div className="fs-12 c-dim mb-3" data-testid="plan-note">房主预计 {plan} 人，现在 {n} 人。</div> : null;
+  return (
+    <div className="mb-3" data-testid="plan">
+      <div className="fs-12 mb-1">预计人数</div>
+      <div className="px-seg" role="radiogroup" aria-label="预计人数">
+        <button role="radio" aria-checked={!plan} className={!plan ? 'on' : ''} onClick={() => setPlan(null)} data-testid="plan-auto">自动</button>
+        {counts.map(c => (
+          <button key={c} role="radio" aria-checked={plan === c} className={plan === c ? 'on' : ''} onClick={() => setPlan(c)} data-testid={`plan-${c}`}>{c}</button>
+        ))}
+      </div>
+      <div className="fs-12 c-dim mt-1" data-testid="plan-note">{note}</div>
+    </div>
+  );
+}
+
 function CupidMode({ rules, n, isHost, update }) {
   const on = rules.cupid === 'yes';
   const tooFew = n < CUPID_MIN;
@@ -317,7 +353,7 @@ function VariantPanel({ rules, isHost, update }) {
       </div>
       <p className="fs-12 c-dim mb-3">双身份玩法各地不一样，{isHost ? '开局前和大家商量好再选。' : '由房主设置。'}</p>
       <div className="flex flex-col gap-3">
-        {VARIANTS.filter(v => !v.mode).map(v => {
+        {VARIANTS.filter(v => !v.mode && (v.key !== 'babyMeet' || isBabyWin(rules))).map(v => {
           const cur = v.opts.find(o => o[0] === rules[v.key]) || v.opts[0];
           return (
             <div key={v.key}>

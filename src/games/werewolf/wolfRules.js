@@ -31,6 +31,10 @@ export const GODS = ['seer', 'witch', 'hunter', 'guard'];
 
 // 丘比特模式 (special mode, like Avalon's 湖中仙女): one 丘比特 card joins the deck.
 export const CUPID_MIN = 8;
+// 村规金宝宝: only meaningful with enough players for 3 wolf cards + several 双民.
+export const VILLAGE_MIN = 8;
+// 只杀金宝宝: every deal has 1–3 金宝宝 (players holding two 村民 cards).
+export const BABY_RANGE = [1, 3];
 export const CUPID_BLURB = '加入一张丘比特牌。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。人狼恋的情侣和丘比特变成丘比特阵营：活到只剩自己人才赢；情侣殉情后丘比特也不回好人阵营。';
 export const JGL_BLURB = '金刚狼：两张牌都是狼。整局一次，可以一刀砍掉一个人的两条命，守卫和女巫的解药都挡不住。有一张狼牌出局后就不能再用。';
 
@@ -60,13 +64,14 @@ export const RECOMMENDED = {
 export const VARIANTS = [
   { key: 'order', zh: '牌的顺序', opts: [['choose', '自己排', '看完两张牌，自己决定哪张先用'], ['random', '随机', '发到手就定了，不能调换']] },
   { key: 'wake', zh: '夜里睁眼的狼', opts: [['top', '只有上面的狼牌', '狼牌压在下面时，第一条命没了才睁眼'], ['all', '所有狼牌', '狼牌在下面也睁眼刀人（隐狼）']] },
-  { key: 'seer', zh: '预言家验到', opts: [['card', '当前那张牌', '对方上面那张牌是好是狼'], ['camp', '阵营', '对方手里还有狼牌就显示狼人']] },
-  { key: 'doubleWolf', zh: '金刚狼（一人两张狼牌）', opts: [['no', '不会发到', '狼牌分散给不同的人'], ['maybe', '随机', '可能发到；拿到的人有金刚狼技能'], ['force', '必有一个', '保证有一人拿两张狼牌']] },
+  { key: 'seer', zh: '预言家验到', opts: [['card', '当前那张牌', '对方上面那张牌是好是狼'], ['camp', '阵营', '对方手里还有狼牌就显示狼人'], ['campJgl', '阵营（金刚狼验成好人）', '手里有狼牌就显示狼人，但金刚狼验出来是好人', true]] },
+  { key: 'doubleWolf', zh: '金刚狼（一人两张狼牌）', opts: [['no', '不会发到', '狼牌分散给不同的人'], ['maybe', '随机', '可能发到；拿到的人有金刚狼技能'], ['force', '必有一个', '保证有一人拿两张狼牌'], ['half', '一半机会', '一半的局有一人拿两张狼牌，大家不知道这局有没有', true]] },
   { key: 'selfSave', zh: '女巫自救', opts: [['never', '不能', ''], ['first', '仅首夜', ''], ['always', '可以', '']] },
   { key: 'guardSave', zh: '同守同救', opts: [['dies', '会死', '守卫和女巫救同一人，奶穿'], ['lives', '不死', '']] },
   { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
   { key: 'mute', zh: '夜里失去第一条命', opts: [['no', '照常投票', ''], ['yes', '当天不能投票', '第二天恢复']] },
-  { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['baby', '金宝宝', '两张都是村民的人（金宝宝）全部出局，或好人的神牌全灭'], ['city', '屠城', '好人阵营全部出局']] },
+  { key: 'win', zh: '狼人胜利', opts: [['side', '屠边', '好人的村民牌或神牌全灭'], ['baby', '金宝宝', '两张都是村民的人（金宝宝）全部出局，或好人的神牌全灭'], ['city', '屠城', '好人阵营全部出局'], ['babyOnly', '只杀金宝宝', '金宝宝全部出局狼人才赢；神、民全灭都不算', true]] },
+  { key: 'babyMeet', zh: '金宝宝开局', opts: [['yes', '互相认识', '金宝宝看得到其他金宝宝是谁'], ['no', '不互认', '只知道自己是金宝宝']] },
   { key: 'cupid', mode: true, zh: '丘比特模式', opts: [['no', '关闭', ''], ['yes', '开启', CUPID_BLURB]] },
   { key: 'pk', zh: '平票', opts: [['no', '无人出局', ''], ['yes', 'PK 再投', '平票的人再各说一轮，其他人再投一次；再平票无人出局']] },
   { key: 'peace', zh: '连续平安夜', opts: [['no', '不算', ''], ['three', '三晚好人胜', '连续三个晚上没有人失去命，好人直接获胜']] },
@@ -84,6 +89,7 @@ export const PRESETS = [
   { id: 'jgl', zh: '金刚狼局', desc: '保证有一人拿两张狼牌，整局一次可以一刀砍两条命。', rules: { doubleWolf: 'force' } },
   { id: 'mute', zh: '一死禁票', desc: '夜里失去第一条命的人当天不能投票；出局亮牌。', rules: { mute: 'yes', reveal: 'show' } },
   { id: 'baby', zh: '金宝宝局', desc: '双民玩家是金宝宝，开局互相认识；狼人杀光金宝宝或神就赢，连续三个平安夜好人赢。', rules: { win: 'baby', peace: 'three' } },
+  { id: 'village', zh: '村规金宝宝', min: VILLAGE_MIN, desc: '每局 1–3 个金宝宝，互相不认识，狼人杀光金宝宝就赢；一半的局藏着金刚狼（没人知道有没有），预言家验阵营但金刚狼验成好人；连续三个平安夜好人赢。', rules: { win: 'babyOnly', babyMeet: 'no', doubleWolf: 'half', seer: 'campJgl', peace: 'three' } },
   { id: 'city', zh: '屠城局', desc: '狼人要杀光所有好人才赢，好人更有余地，适合新手多的局。', rules: { win: 'city' } },
 ];
 export const presetRules = id => ({ ...DEFAULT_RULES, ...(PRESETS.find(p => p.id === id)?.rules || {}) });
@@ -98,7 +104,11 @@ export function presetOf(cfg = {}) {
 
 // House rules that shift balance a lot; the recommended deck is pre-tuned for each combination.
 export const TUNED_KEYS = ['order', 'wake', 'doubleWolf', 'mute', 'win'];
-export const tableKey = rules => TUNED_KEYS.map(k => rules[k]).join('|') + (rules.cupid === 'yes' ? '|cupid' : '');
+export const tableKey = rules => TUNED_KEYS.map(k => rules[k]).join('|') + (rules.cupid === 'yes' ? '|cupid' : '')
+  + (rules.seer === 'campJgl' ? '|sj' : '') + (rules.babyMeet === 'no' ? '|nb' : '') + (rules.peace === 'three' && rules.win === 'babyOnly' ? '|p3' : '');
+export const isBabyWin = rules => rules?.win === 'baby' || rules?.win === 'babyOnly';
+/** 金刚狼 can be dealt (one player with two wolf cards). */
+export const jglPossible = rules => ['maybe', 'force', 'half'].includes(rules?.doubleWolf);
 /** Pre-computed recommendation + simulated good win rate, or null. */
 export const balanceFor = (n, rules) => BALANCE_TABLE?.[tableKey(rules)]?.[n] || null;
 
@@ -117,7 +127,13 @@ export function buildDeck(n, cfg) {
   if (cfg.wolves < 1) return { error: '至少要 1 张狼牌' };
   if (cfg.wolves > n - 1) return { error: '狼牌太多了' };
   if (cfg.rules?.cupid === 'yes' && n < CUPID_MIN) return { error: `丘比特模式至少要 ${CUPID_MIN} 人` };
-  if (cfg.rules?.doubleWolf === 'force' && cfg.wolves < 3) return { error: '金刚狼局至少要 3 张狼牌（金刚狼 + 一个狼队友）' };
+  if (cfg.rules?.win === 'babyOnly' && n < VILLAGE_MIN) return { error: `只杀金宝宝至少要 ${VILLAGE_MIN} 人` };
+  if (['force', 'half'].includes(cfg.rules?.doubleWolf) && cfg.wolves < 3) return { error: '金刚狼局至少要 3 张狼牌（金刚狼 + 一个狼队友）' };
+  if (cfg.rules?.win === 'babyOnly') {
+    // non-村民 cards must cover enough players to leave at most 3 双民 (a 金刚狼 covers one player with two cards)
+    const spread = cfg.wolves - (['force', 'half'].includes(cfg.rules.doubleWolf) ? 1 : 0) + cfg.gods.length + cupid.length;
+    if (n - spread > BABY_RANGE[1]) return { error: `村民牌太多，金宝宝会超过 ${BABY_RANGE[1]} 个：再加 ${n - spread - BABY_RANGE[1]} 张神牌或狼牌` };
+  }
   if (villagers < 1) return { error: '至少要留 1 张村民牌' };
   return { cards: [...Array(cfg.wolves).fill('wolf'), ...cfg.gods, ...cupid, ...Array(villagers).fill('villager')], villagers };
 }
@@ -138,15 +154,17 @@ export function newGame(players, cfg) {
   const deck = buildDeck(n, cfg);
   if (deck.error) throw new Error(deck.error);
   let cards;
+  const wantDouble = rules.doubleWolf === 'force' || (rules.doubleWolf === 'half' && Math.random() < 0.5);
   // Re-deal until nobody holds two wolf cards (spreads the wolf camp over
   // more players) and at least two players are purely good.
-  for (let tries = 0; tries < 200; tries++) {
+  for (let tries = 0; tries < 5000; tries++) {
     cards = shuffle(deck.cards);
     const wolvesOf = i => (cards[2 * i] === 'wolf') + (cards[2 * i + 1] === 'wolf');
     const goodPlayers = seats.filter((_, i) => wolvesOf(i) === 0);
     const doubles = seats.filter((_, i) => wolvesOf(i) === 2).length;
-    const dealOk = rules.doubleWolf === 'maybe' || (rules.doubleWolf === 'force' ? doubles === 1 || deck.cards.filter(c => c === 'wolf').length < 2 : doubles === 0);
-    const babyOk = rules.win !== 'baby' || seats.some((_, i) => cards[2 * i] === 'villager' && cards[2 * i + 1] === 'villager');
+    const dealOk = rules.doubleWolf === 'maybe' || (wantDouble ? doubles === 1 || deck.cards.filter(c => c === 'wolf').length < 2 : doubles === 0);
+    const babyN = seats.filter((_, i) => cards[2 * i] === 'villager' && cards[2 * i + 1] === 'villager').length;
+    const babyOk = !isBabyWin(rules) || (rules.win === 'babyOnly' ? babyN >= BABY_RANGE[0] && babyN <= BABY_RANGE[1] : babyN > 0);
     if (goodPlayers.length >= 2 && dealOk && babyOk) break;
   }
   const hands = {};
@@ -356,7 +374,10 @@ export function seerAct(g, id, target) {
   must(g.step === 'night' && activeCard(g, id) === 'seer', '现在不能查验');
   must(target !== id && isAlive(g, target), '选一个还在场的其他人');
   g.acts.seer = target;
-  const wolf = R(g).seer === 'camp' ? hasLiveWolf(g, target) : activeCard(g, target) === 'wolf';
+  const sr = R(g).seer;
+  const wolf = sr === 'camp' ? hasLiveWolf(g, target)
+    : sr === 'campJgl' ? hasLiveWolf(g, target) && !isJgl(g, target) // 村规: 金刚狼 checks as 好人
+    : activeCard(g, target) === 'wolf';
   g.seerLog.push({ night: g.night, from: id, to: target, wolf });
   advanceNight(g);
 }
@@ -590,7 +611,8 @@ function checkWin(g) {
   else if (s.wolves === 0) { winner = 'good'; reason = '所有狼牌都出局了'; }
   else if (R(g).peace === 'three' && g.peaceStreak >= 3) { winner = 'good'; reason = '连续三个平安夜'; }
   else if (win === 'city') { if (s.villagers + s.gods === 0) { winner = 'wolf'; reason = '屠城：好人阵营全部出局'; } }
-  else if (win === 'baby' && s.babies === 0) { winner = 'wolf'; reason = '金宝宝全部出局'; }
+  else if (isBabyWin({ win }) && s.babies === 0) { winner = 'wolf'; reason = '金宝宝全部出局'; }
+  else if (win === 'babyOnly') { /* 村规: only the 金宝宝 count */ }
   else if (win !== 'baby' && s.villagers === 0) { winner = 'wolf'; reason = '屠边：好人阵营的村民牌全部出局'; }
   else if (g.goodGodsAtStart > 0 && s.gods === 0) { winner = 'wolf'; reason = win === 'baby' ? '好人阵营的神牌全部出局' : '屠边：好人阵营的神牌全部出局'; }
   if (!winner) return false;

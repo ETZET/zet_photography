@@ -332,7 +332,7 @@
 .px-seg button { position: relative; }
 .px-star-rec { position: absolute; top: 2px; right: 4px; font-size: 9px; color: var(--mute); }
 .px-seg button.on .px-star-rec { color: #2a1a05; }
-.px-seg button.on { background: var(--gold); color: #2a1a05; color: var(--ink); box-shadow: 0 -3px 0 0 var(--line), 0 3px 0 0 var(--line), -3px 0 0 0 var(--line), 3px 0 0 0 var(--line), inset 0 0 0 3px var(--gold); animation: px-pop 0.2s steps(2) both; }
+.px-seg button.on { background: var(--gold); color: #2a1a05; box-shadow: 0 -3px 0 0 var(--line), 0 3px 0 0 var(--line), -3px 0 0 0 var(--line), 3px 0 0 0 var(--line), inset 0 0 0 3px var(--gold); animation: px-pop 0.2s steps(2) both; }
 .px-seg button:disabled { cursor: default; }
 .px-balance { height: 12px; background: var(--evil); box-shadow: 0 0 0 3px var(--line); margin: 3px; }
 .px-balance i { display: block; height: 100%; background: var(--good); box-shadow: inset 0 2px 0 0 #8fb0ff; transition: width 0.4s steps(4); }
