@@ -262,9 +262,9 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
         babyOnly: `只看金宝宝（两张都是村民的人，每局 1–3 个，${rules.babyMeet === 'no' ? '开局不互认' : '开局互相认识'}）：金宝宝全部出局才赢，神、民全灭都不算。`,
       })[rules.win] || '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
       {jglPossible(rules) && <p><span className="c-evil">金刚狼：</span>{({ maybe: '发牌时可能有人拿到两张狼牌。', force: '保证有一人拿两张狼牌。', half: '一半的局有一人拿两张狼牌，没人知道这局有没有。' })[rules.doubleWolf]}{JGL_BLURB.replace(/^金刚狼：/, '')}</p>}
-      {rules.cupid === 'yes' && <p><span className="c-pink">丘比特模式：</span>第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。情侣同阵营就照常；人狼恋的情侣和丘比特变成丘比特阵营，活到只剩自己人才赢，好人和狼人都要先除掉这对情侣才能赢；情侣殉情后丘比特不回好人阵营。</p>}
+      {rules.cupid === 'yes' && <p><span className="c-pink">丘比特模式：</span>第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情，放逐投票时情侣不能投对方。情侣同阵营就照常；人狼恋的情侣和丘比特变成丘比特阵营，活到只剩自己人才赢，好人和狼人都要先除掉这对情侣才能赢；情侣殉情后丘比特不回好人阵营。</p>}
       <p className="c-dim">
-        没有警长，发言顺序由手机决定；{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
+        {rules.sheriff === 'yes' ? '第一天先竞选警长（警上发言、可退水，警下投票，平票 PK 一次），警长的票算 1.5 票、每天选警左或警右发言、最后发言归票，出局时移交或撕警徽；' : '没有警长，发言顺序由手机决定；'}{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
         守卫不能连守，同守同救{rules.guardSave === 'dies' ? '会死' : '不死'}{rules.mute === 'yes' ? '；夜里失去第一条命的人当天不能投票' : ''}。
       </p>
       <table className="w-full border-collapse mt-1">

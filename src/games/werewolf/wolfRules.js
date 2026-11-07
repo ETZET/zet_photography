@@ -35,7 +35,7 @@ export const CUPID_MIN = 8;
 export const VILLAGE_MIN = 8;
 // 只杀金宝宝: every deal has 1–3 金宝宝 (players holding two 村民 cards).
 export const BABY_RANGE = [1, 3];
-export const CUPID_BLURB = '加入一张丘比特牌。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情。人狼恋的情侣和丘比特变成丘比特阵营：活到只剩自己人才赢；情侣殉情后丘比特也不回好人阵营。';
+export const CUPID_BLURB = '加入一张丘比特牌（拿到丘比特的人一定是好人阵营）。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情，情侣放逐投票时不能投对方。人狼恋的情侣和丘比特变成丘比特阵营：活到只剩自己人才赢；情侣殉情后丘比特也不回好人阵营。';
 export const JGL_BLURB = '金刚狼：两张牌都是狼。整局一次，可以一刀砍掉一个人的两条命，守卫和女巫的解药都挡不住。有一张狼牌出局后就不能再用。';
 
 export const ROLE_BLURB = {
@@ -74,6 +74,7 @@ export const VARIANTS = [
   { key: 'babyMeet', zh: '金宝宝开局', opts: [['yes', '互相认识', '金宝宝看得到其他金宝宝是谁'], ['no', '不互认', '只知道自己是金宝宝']] },
   { key: 'cupid', mode: true, zh: '丘比特模式', opts: [['no', '关闭', ''], ['yes', '开启', CUPID_BLURB]] },
   { key: 'pk', zh: '平票', opts: [['no', '无人出局', ''], ['yes', 'PK 再投', '平票的人再各说一轮，其他人再投一次；再平票无人出局']] },
+  { key: 'sheriff', zh: '警长', opts: [['no', '没有警长', '手机决定发言顺序'], ['yes', '第一天竞选', '第一天白天先竞选警长：警长的票算 1.5 票，每天决定从左还是从右开始发言、自己最后发言归票；出局时移交或撕掉警徽']] },
   { key: 'peace', zh: '连续平安夜', opts: [['no', '不算', ''], ['three', '三晚好人胜', '连续三个晚上没有人失去命，好人直接获胜']] },
 ];
 export const DEFAULT_RULES = Object.fromEntries(VARIANTS.map(v => [v.key, v.opts[0][0]]));
@@ -89,7 +90,7 @@ export const PRESETS = [
   { id: 'jgl', zh: '金刚狼局', desc: '保证有一人拿两张狼牌，整局一次可以一刀砍两条命。', rules: { doubleWolf: 'force' } },
   { id: 'mute', zh: '一死禁票', desc: '夜里失去第一条命的人当天不能投票；出局亮牌。', rules: { mute: 'yes', reveal: 'show' } },
   { id: 'baby', zh: '金宝宝局', desc: '双民玩家是金宝宝，开局互相认识；狼人杀光金宝宝或神就赢，连续三个平安夜好人赢。', rules: { win: 'baby', peace: 'three' } },
-  { id: 'village', zh: '村规金宝宝', min: VILLAGE_MIN, desc: '每局 1–3 个金宝宝，互相不认识，狼人杀光金宝宝就赢；一半的局藏着金刚狼（没人知道有没有），预言家验阵营但金刚狼验成好人；连续三个平安夜好人赢。', rules: { win: 'babyOnly', babyMeet: 'no', doubleWolf: 'half', seer: 'campJgl', peace: 'three' } },
+  { id: 'village', zh: '村规金宝宝', min: VILLAGE_MIN, desc: '第一天竞选警长；每局 1–3 个金宝宝，互相不认识，狼人杀光金宝宝就赢；一半的局藏着金刚狼（没人知道有没有），预言家验阵营但金刚狼验成好人；连续三个平安夜好人赢。', rules: { win: 'babyOnly', babyMeet: 'no', doubleWolf: 'half', seer: 'campJgl', peace: 'three', sheriff: 'yes' } },
   { id: 'city', zh: '屠城局', desc: '狼人要杀光所有好人才赢，好人更有余地，适合新手多的局。', rules: { win: 'city' } },
 ];
 export const presetRules = id => ({ ...DEFAULT_RULES, ...(PRESETS.find(p => p.id === id)?.rules || {}) });
@@ -165,7 +166,9 @@ export function newGame(players, cfg) {
     const dealOk = rules.doubleWolf === 'maybe' || (wantDouble ? doubles === 1 || deck.cards.filter(c => c === 'wolf').length < 2 : doubles === 0);
     const babyN = seats.filter((_, i) => cards[2 * i] === 'villager' && cards[2 * i + 1] === 'villager').length;
     const babyOk = !isBabyWin(rules) || (rules.win === 'babyOnly' ? babyN >= BABY_RANGE[0] && babyN <= BABY_RANGE[1] : babyN > 0);
-    if (goodPlayers.length >= 2 && dealOk && babyOk) break;
+    // 丘比特 is always a good-camp card: never dealt next to a wolf card
+    const cupidOk = seats.every((_, i) => !(cards[2 * i] === 'cupid' && cards[2 * i + 1] === 'wolf') && !(cards[2 * i] === 'wolf' && cards[2 * i + 1] === 'cupid'));
+    if (goodPlayers.length >= 2 && dealOk && babyOk && cupidOk) break;
   }
   const hands = {};
   const dead = {};
@@ -193,6 +196,8 @@ export function newGame(players, cfg) {
     jglUsed: false,
     lovers: null,
     peaceStreak: 0,
+    sheriff: null,   // 警长 (sheriff variant): id of the badge holder
+    elect: null,     // 警长竞选 in progress (day 1)
     timeScale: cfg.timeScale ?? 1,
   };
   g.goodGodsAtStart = goodCampCards(g).gods;
@@ -370,14 +375,20 @@ export function wolfAct(g, id, target, { double = false } = {}) {
   advanceNight(g);
 }
 
+/** What a seer check on `id` would show right now (true = 狼人). */
+export function seerSeesWolf(g, id) {
+  const sr = R(g).seer;
+  if (sr === 'camp') return hasLiveWolf(g, id);
+  if (sr === 'campJgl') return hasLiveWolf(g, id) && !isJgl(g, id); // 村规: 金刚狼 checks as 好人
+  return activeCard(g, id) === 'wolf';
+}
+export const seerByCamp = rules => rules?.seer === 'camp' || rules?.seer === 'campJgl';
+
 export function seerAct(g, id, target) {
   must(g.step === 'night' && activeCard(g, id) === 'seer', '现在不能查验');
   must(target !== id && isAlive(g, target), '选一个还在场的其他人');
   g.acts.seer = target;
-  const sr = R(g).seer;
-  const wolf = sr === 'camp' ? hasLiveWolf(g, target)
-    : sr === 'campJgl' ? hasLiveWolf(g, target) && !isJgl(g, target) // 村规: 金刚狼 checks as 好人
-    : activeCard(g, target) === 'wolf';
+  const wolf = seerSeesWolf(g, target);
   g.seerLog.push({ night: g.night, from: id, to: target, wolf });
   advanceNight(g);
 }
@@ -464,7 +475,8 @@ function afterLoss(g, then) {
 }
 
 function proceed(g, then) {
-  if (then === 'day') enterDay(g);
+  if (then === 'day' && R(g).sheriff === 'yes' && !g.elected) enterElection(g);
+  else if (then === 'day') enterDay(g);
   else if (then === 'dusk') enterDusk(g);
   else enterDay(g);
 }
@@ -474,6 +486,7 @@ export function ackLoss(g, id, { shoot = null } = {}) {
   const c = g.confirm;
   must(g.step === 'confirm' && c.ids.includes(id), '现在不用确认');
   if (id in c.acked) return;
+  must(!badgePending(g, id), '先决定警徽交给谁');
   if (shoot) {
     must(c.hunter === id, '你不能开枪');
     must(shoot !== id && isAlive(g, shoot), '选一个还在场的其他人');
@@ -513,6 +526,13 @@ function enterDay(g, now = Date.now()) {
   g.step = 'day';
   const n = g.seats.length;
   const lost = g.lastNight?.night === g.day ? g.lastNight.lost : [];
+  const lastWords = [...new Set(lost.map(l => l.id))].filter(id => !isAlive(g, id) && g.day === 1);
+  g.shotToday = [];
+  if (g.sheriff && isAlive(g, g.sheriff)) {
+    // 警长 picks 警左 / 警右, then speaks last (归票)
+    g.speak = { order: lastWords, lastWords, at: 0, since: now, dir: null, after: null, pk: false, sheriff: g.sheriff, pick: true };
+    return;
+  }
   const victim = lost[0]?.id;
   const dir = Math.random() < 0.5 ? 1 : -1;
   const from = victim ? g.seats.indexOf(victim) + dir : Math.floor(Math.random() * n);
@@ -521,25 +541,47 @@ function enterDay(g, now = Date.now()) {
     const id = g.seats[(((from + dir * k) % n) + n) % n];
     if (isAlive(g, id)) order.push(id);
   }
-  const lastWords = [...new Set(lost.map(l => l.id))].filter(id => !isAlive(g, id) && g.day === 1);
   g.speak = { order: [...lastWords, ...order], lastWords, at: 0, since: now, dir: dir === 1 ? 'up' : 'down', after: victim || null, pk: false };
-  g.shotToday = [];
+}
+
+/** 警长 (or the host for a sleeping phone) picks the direction: 'up' = 号码从小到大. */
+export function sheriffOrder(g, id, dir, isHost = false, now = Date.now()) {
+  const sp = g.speak;
+  must(g.step === 'day' && sp?.pick, '现在不用选发言顺序');
+  must(isHost || id === g.sheriff, '由警长决定发言顺序');
+  must(dir === 'up' || dir === 'down', '选一个方向');
+  const n = g.seats.length;
+  const d = dir === 'up' ? 1 : -1;
+  const at = g.seats.indexOf(g.sheriff);
+  const order = [];
+  for (let k = 1; k <= n; k++) {
+    const pid = g.seats[(((at + d * k) % n) + n) % n];
+    if (isAlive(g, pid) && !order.includes(pid)) order.push(pid);
+  }
+  // the 警长 (seat at + n*d) lands last naturally
+  sp.order = [...sp.lastWords, ...order];
+  sp.dir = dir;
+  sp.pick = false;
+  if (sp.at >= sp.lastWords.length) sp.since = now;
 }
 
 /** Current speaker (or the host) passes the turn to the next speaker. */
 export function nextSpeaker(g, id, isHost = false, now = Date.now()) {
-  must((g.step === 'day' || g.step === 'dusk') && (g.speak || g.dusk), '现在不是发言时间');
-  const sp = g.step === 'dusk' ? g.dusk : g.speak;
+  must(['day', 'dusk', 'elect'].includes(g.step) && (g.speak || g.dusk || g.elect), '现在不是发言时间');
+  const sp = g.step === 'dusk' ? g.dusk : g.step === 'elect' ? g.elect : g.speak;
+  must(g.step !== 'elect' || sp.phase === 'speak', '现在不是发言时间');
   must(isHost || sp.order[sp.at] === id, '还没轮到你');
   if (sp.at < sp.order.length) { sp.at += 1; sp.since = now; }
 }
 export function speakerNow(g) {
+  if (g.step === 'elect') return g.elect?.phase === 'speak' ? g.elect.order[g.elect.at] || null : null;
   const sp = g.step === 'day' ? g.speak : g.step === 'dusk' ? g.dusk : null;
   return sp ? sp.order[sp.at] || null : null;
 }
 
 export function startVote(g) {
   must(g.step === 'day', '现在不能投票');
+  must(!g.speak?.pick, '先等警长决定发言顺序');
   g.step = 'vote';
   g.votes = {};
   if (!voters(g).length) { // everyone left is muted / on the PK stand
@@ -558,18 +600,19 @@ export function castVote(g, id, target) {
   must(!isMuted(g, id), '你昨晚失去了第一条命，今天不能投票');
   must(!(g.pk || []).includes(id), 'PK 台上的人不投票');
   must(target === null || (isAlive(g, target) && candidates(g).includes(target)), g.pk ? '只能投 PK 台上的人' : '他已经出局了');
+  must(target === null || target !== partnerOf(g, id), '情侣不能投对方');
   g.votes[id] = target;
   const vs = voters(g);
   if (!vs.every(v => v in g.votes)) return;
 
   const tally = {};
-  vs.forEach(v => { const t = g.votes[v]; if (t) tally[t] = (tally[t] || 0) + 1; });
+  vs.forEach(v => { const t = g.votes[v]; if (t) tally[t] = (tally[t] || 0) + voteWeight(g, v); });
   const best = Math.max(0, ...Object.values(tally));
   const top = g.seats.filter(t => tally[t] === best && best > 0);
   const out = top.length === 1 ? top[0] : null;
   const tie = top.length > 1;
   const card = out ? loseLife(g, out, 'vote', { day: g.day }) : null;
-  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, out, tie, pk: !!g.pk || undefined, card: R(g).reveal === 'show' ? card : undefined, love: loveDeaths(g) });
+  g.log.push({ type: 'vote', day: g.day, votes: { ...g.votes }, sheriff: g.sheriff && vs.includes(g.sheriff) ? g.sheriff : undefined, out, tie, pk: !!g.pk || undefined, card: R(g).reveal === 'show' ? card : undefined, love: loveDeaths(g) });
   if (tie && R(g).pk === 'yes' && !g.pk) {
     // PK: the tied players speak again, everyone else votes once more
     g.pk = top;
@@ -580,6 +623,128 @@ export function castVote(g, id, target) {
   g.pk = null;
   g.voteOut = out;
   afterLoss(g, 'dusk');
+}
+
+// -------------------------------------------------------------- sheriff ---
+// 警长 variant. Day 1, after dawn: everyone alive says 上警 or not; the
+// candidates speak (any of them may 退水 before the vote); everyone who never
+// ran votes. A tie gets one PK round (the tied speak again, same voters);
+// a second tie, nobody running or nobody left to vote = 警徽流失.
+// The 警长's exile vote counts 1.5, they choose 警左 / 警右 each day and speak
+// last; when out for good they pass the badge on or tear it up.
+export const voteWeight = (g, id) => (g.sheriff === id ? 1.5 : 1);
+/** The 警长 is out for good and hasn't handed the badge on yet. */
+export const badgePending = (g, id) => g.sheriff === id && !isAlive(g, id);
+
+function enterElection(g, now = Date.now()) {
+  g.step = 'elect';
+  g.elect = { phase: 'sign', sign: {}, runners: [], quit: [], order: [], at: 0, since: now, votes: {}, pk: null };
+}
+
+/** Everyone who stood for 警长 at the start (退水 included) — they don't vote. */
+export const electVoters = g => (g.elect ? alivePlayers(g).filter(id => g.elect.sign[id] !== true) : []);
+/** Who can still be voted for. */
+export const electCandidates = g => (g.elect ? (g.elect.pk || g.elect.runners).filter(id => isAlive(g, id) && !g.elect.quit.includes(id)) : []);
+
+function endElection(g, to, extra = {}) {
+  g.sheriff = to || null;
+  g.log.push({ type: 'sheriff', day: g.day, to: to || null, ...extra });
+  g.elect = null;
+  g.elected = true;
+  enterDay(g);
+}
+
+function electSpeeches(g, ids, now) {
+  const e = g.elect;
+  const n = ids.length;
+  const from = Math.floor(Math.random() * n);
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  e.order = Array.from({ length: n }, (_, k) => ids[(((from + dir * k) % n) + n) % n]);
+  e.at = 0;
+  e.since = now;
+  e.phase = 'speak';
+  e.votes = {};
+}
+
+function afterSign(g, now) {
+  const e = g.elect;
+  e.runners = g.seats.filter(id => e.sign[id] === true);
+  if (!e.runners.length) return endElection(g, null, { reason: 'none' });
+  if (e.runners.length === 1) return endElection(g, e.runners[0], { reason: 'only' });
+  return electSpeeches(g, e.runners, now);
+}
+
+/** 上警 (run = true) or not. Once everyone alive has answered, speeches start. */
+export function electSign(g, id, run, now = Date.now()) {
+  const e = g.elect;
+  must(g.step === 'elect' && e.phase === 'sign', '报名已经结束');
+  must(isAlive(g, id), '你已出局');
+  e.sign[id] = !!run;
+  if (alivePlayers(g).every(x => x in e.sign)) afterSign(g, now);
+}
+
+/** Host: whoever hasn't answered doesn't run. */
+export function electCloseSign(g, isHost, now = Date.now()) {
+  must(isHost, '由房主操作');
+  const e = g.elect;
+  must(g.step === 'elect' && e.phase === 'sign', '报名已经结束');
+  alivePlayers(g).forEach(x => { if (!(x in e.sign)) e.sign[x] = false; });
+  afterSign(g, now);
+}
+
+/** 退水: a candidate drops out before the vote (can't vote either). */
+export function electQuit(g, id, now = Date.now()) {
+  const e = g.elect;
+  must(g.step === 'elect' && e.phase === 'speak' && !e.pk, '现在不能退水');
+  must(e.runners.includes(id) && !e.quit.includes(id), '你不在警上');
+  e.quit.push(id);
+  const idx = e.order.indexOf(id);
+  e.order.splice(idx, 1);
+  if (idx < e.at) e.at -= 1;
+  else if (idx === e.at) e.since = now;
+  const left = electCandidates(g);
+  if (left.length <= 1) endElection(g, left[0] || null, { reason: left.length ? 'only' : 'none' });
+}
+
+/** Host opens the 警长 vote (警下 players vote). */
+export function electStartVote(g, isHost) {
+  must(isHost, '由房主开启投票');
+  const e = g.elect;
+  must(g.step === 'elect' && e.phase === 'speak', '现在不能投票');
+  if (!electVoters(g).length) return endElection(g, null, { reason: 'novoters' });
+  e.phase = 'vote';
+  e.votes = {};
+}
+
+/** target = candidate id, or null to abstain. */
+export function electVote(g, id, target, now = Date.now()) {
+  const e = g.elect;
+  must(g.step === 'elect' && e.phase === 'vote', '现在不是警长投票');
+  must(electVoters(g).includes(id), '警上的人不投票');
+  must(target === null || electCandidates(g).includes(target), '只能投警上的人');
+  e.votes[id] = target;
+  const vs = electVoters(g);
+  if (!vs.every(v => v in e.votes)) return;
+  const tally = {};
+  vs.forEach(v => { const t = e.votes[v]; if (t) tally[t] = (tally[t] || 0) + 1; });
+  const best = Math.max(0, ...Object.values(tally));
+  const top = g.seats.filter(t => tally[t] === best && best > 0);
+  const votes = { ...e.votes };
+  if (top.length === 1) return endElection(g, top[0], { votes, pk: !!e.pk || undefined });
+  if (top.length > 1 && !e.pk) {
+    g.log.push({ type: 'sheriffTie', day: g.day, votes, tie: top });
+    e.pk = top;
+    return electSpeeches(g, top, now);
+  }
+  return endElection(g, null, { votes, reason: top.length ? 'tie' : 'abstain', pk: !!e.pk || undefined });
+}
+
+/** The fallen 警长 hands the badge to someone alive, or tears it up (to = null). */
+export function passBadge(g, id, to) {
+  must(g.step === 'confirm' && badgePending(g, id), '现在不能移交警徽');
+  must(to === null || (to !== id && isAlive(g, to)), '选一个还在场的人');
+  g.sheriff = to;
+  g.log.push({ type: 'badge', day: g.day, night: g.confirm?.then === 'day' ? g.night : undefined, from: id, to });
 }
 
 // ----------------------------------------------------------------- dusk ---

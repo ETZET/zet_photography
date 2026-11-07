@@ -327,7 +327,7 @@ test('双身份狼人 screen gallery', async ({ browser }) => {
   await P('铁柱').getByTestId('close-love').click();
   await shot(P('铁柱'), '情侣的圆桌', '情侣和丘比特的圆桌上有爱心');
   // vote out 小红 for good → 铁柱 殉情
-  await stage(host, { hands: C8, rules: { cupid: 'yes' }, then: "R.cupidAct(g, ids[6], ids[2], ids[7]); R.guardAct(g, ids[5], ids[0]); R.seerAct(g, ids[0], ids[1]); R.wolfAct(g, ids[1], ids[3]); R.wolfAct(g, ids[4], ids[3]); R.wolfAct(g, ids[7], ids[3]); R.witchAct(g, ids[3], {}); R.settleNight(g, Infinity); " + ACK_ALL + " g.dead[ids[7]] = 1; R.startVote(g); R.voters(g).forEach(v => R.castVote(g, v, v === ids[7] ? ids[0] : ids[7]));" });
+  await stage(host, { hands: C8, rules: { cupid: 'yes' }, then: "R.cupidAct(g, ids[6], ids[2], ids[7]); R.guardAct(g, ids[5], ids[0]); R.seerAct(g, ids[0], ids[1]); R.wolfAct(g, ids[1], ids[3]); R.wolfAct(g, ids[4], ids[3]); R.wolfAct(g, ids[7], ids[3]); R.witchAct(g, ids[3], {}); R.settleNight(g, Infinity); " + ACK_ALL + " g.dead[ids[7]] = 1; R.startVote(g); R.voters(g).forEach(v => R.castVote(g, v, v === ids[7] || v === ids[2] ? ids[0] : ids[7]));" });
   await expect(host.getByTestId('vote-reveal')).toBeVisible();
   await host.waitForTimeout(2600);
   await shot(host, '殉情', '投出一个情侣，另一个跟着出局', { full: false });

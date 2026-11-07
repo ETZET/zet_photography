@@ -2,13 +2,13 @@
 // live sync, leave / host hand-over, toasts. Each game plugs in its own
 // Lobby + Board + bots and a little branding.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Torch } from '../pixel/PixelSprite';
+import PixelSprite, { Torch } from '../pixel/PixelSprite';
 import { roomStore, getPlayerId } from '../avalon/roomStore';
 import { useRoute, navigate } from '../../route';
 import { keepHostFirst } from './seats';
 import { PlayersProvider, ConfirmProvider, ConfirmOutlet, useConfirm } from '../avalon/ui';
 import Narrator from './Narrator';
-import { NAME_MAX_UNITS, clampName, nameUnits, uniqueName } from '../avalon/names';
+import { NAME_MAX_UNITS, clampName, nameUnits, randomName, uniqueName } from '../avalon/names';
 
 export { GAME_TITLES } from '../registry';
 import { GAME_TITLES } from '../registry';
@@ -208,19 +208,25 @@ function Entry({ spec, myId, initialCode, missingMsg, onEnter }) {
         <p className="fs-12 c-dim mt-2 tracking-[0.4em]">{spec.subtitle}</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 items-stretch">
-        <div className="px-frame pad flex flex-col gap-3 md:order-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 items-stretch">
+        <div className="px-frame pad flex flex-col gap-3 md:order-2 min-w-0">
           <div className="px-title">{joining ? `加入房间 ${initialCode}` : spec.enterTitle || '进入房间'}</div>
           <label className="flex flex-col gap-1">
             <span className="fs-12 c-dim flex justify-between">
               <span>你的名字（中文最多 {NAME_MAX_UNITS / 2} 字，英文最多 {NAME_MAX_UNITS} 个字母）</span>
               <span className={units >= NAME_MAX_UNITS ? 'c-gold' : 'c-mute'} data-testid="name-units">{units}/{NAME_MAX_UNITS}</span>
             </span>
-            <input className="px-input" value={name} placeholder={spec.placeholder} data-testid="name-input"
-              onCompositionStart={() => { composing.current = true; }}
-              onCompositionEnd={e => { composing.current = false; setName(clampName(e.currentTarget.value)); }}
-              onChange={e => { setName(composing.current ? e.target.value : clampName(e.target.value)); setError(''); }}
-              onKeyDown={e => e.key === 'Enter' && (joining ? join() : create())} />
+            <span className="flex gap-2 items-stretch">
+              <input className="px-input flex-1 min-w-0" value={name} placeholder={spec.placeholder} data-testid="name-input"
+                onCompositionStart={() => { composing.current = true; }}
+                onCompositionEnd={e => { composing.current = false; setName(clampName(e.currentTarget.value)); }}
+                onChange={e => { setName(composing.current ? e.target.value : clampName(e.target.value)); setError(''); }}
+                onKeyDown={e => e.key === 'Enter' && (joining ? join() : create())} />
+              <button type="button" className="px-btn dark sm shrink-0" data-testid="random-name" aria-label="随机起名" title="随机起个名字"
+                onClick={() => { setName(randomName(name.trim())); setError(''); }}>
+                <PixelSprite name="dice" scale={3} />
+              </button>
+            </span>
           </label>
 
           {joining ? (
@@ -232,7 +238,7 @@ function Entry({ spec, myId, initialCode, missingMsg, onEnter }) {
                 <span className="flex-1 h-[3px] bg-[#3b2f6c]" />或输入房间号<span className="flex-1 h-[3px] bg-[#3b2f6c]" />
               </div>
               <div className="flex items-center">
-                <input className="px-input text-center tracking-[0.4em] uppercase" value={joinCode} maxLength={4} placeholder="ABCD"
+                <input className="px-input flex-1 min-w-0 text-center tracking-[0.4em] uppercase" value={joinCode} maxLength={4} placeholder="ABCD"
                   onChange={e => { setJoinCode(e.target.value.replace(/[^a-z]/gi, '').toUpperCase()); setError(''); }}
                   onKeyDown={e => e.key === 'Enter' && join()} />
                 <button className="px-btn" disabled={busy} onClick={join}>加入</button>

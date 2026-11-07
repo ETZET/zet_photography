@@ -1,6 +1,6 @@
 // Nickname rules. Width units: CJK / full-width / emoji = 2, everything else = 1.
-// 10 units ≈ 5 汉字 or 10 Latin letters — fits a seat name tag.
-export const NAME_MAX_UNITS = 10;
+// 20 units ≈ 10 汉字 or 20 Latin letters; seat tags truncate long names.
+export const NAME_MAX_UNITS = 20;
 
 const isWide = ch => {
   const c = ch.codePointAt(0);
@@ -37,4 +37,18 @@ export function uniqueName(name, players) {
     const candidate = clampName(name, NAME_MAX_UNITS - suffix.length) + suffix;
     if (!taken.has(candidate)) return candidate;
   }
+}
+
+// The dice button next to the name box picks one of these (all ≤ 10 汉字).
+export const FUN_NAMES = [
+  '大明星', '悍跳预言家', '爽身粉',
+  '倒钩狼', '深水狼', '划水村民', '自刀狼', '抿身份大师',
+  '天选之子', '归票机器', '戏精本精', '摸鱼大王', '退水警长',
+  '冲锋狼', '铁预言家', '闭眼玩家', '发言全靠编', '金水大宝宝',
+];
+
+/** A random fun name, never the same as `current`. */
+export function randomName(current) {
+  const pool = FUN_NAMES.filter(n => n !== current);
+  return pool[Math.floor(Math.random() * pool.length)];
 }

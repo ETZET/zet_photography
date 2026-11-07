@@ -40,11 +40,29 @@ export function narrate(g, { seat }) {
       if (g.confirm?.then === 'day') { const d = dawn(g, seat); if (d) cues.push(d); }
       else { const v = voteResult(g, seat); if (v) cues.push(v); }
       cues.push({ key: `cf${g.day}${g.confirm?.then}`, say: '请失去生命的玩家在手机上确认。' });
+      const bp = [...(g.log || [])].reverse().find(l => l.type === 'badge' && l.day === g.day);
+      if (bp) cues.push({ key: `bp${g.day}${bp.from}`, say: bp.to ? `警长把警徽交给了${seat(bp.to)}。` : '警长撕掉了警徽。' });
+      break;
+    }
+    case 'elect': {
+      const e = g.elect;
+      if (!e) break;
+      if (!e.pk) { const d = dawn(g, seat); if (d) cues.push(d); }
+      if (e.phase === 'sign') cues.push({ key: `es${g.day}`, say: '现在竞选警长。想上警的玩家，请在手机上选择上警。' });
+      if (e.pk) cues.push({ key: `epk${g.day}`, say: '警长竞选平票，请平票的玩家再发言一次。' });
+      if (e.phase === 'speak') {
+        const id = e.order[e.at];
+        if (id) cues.push({ key: `esp${g.day}${e.pk ? 'pk' : ''}-${e.order.join('')}-${e.at}`, say: `请${seat(id)}竞选发言。` });
+      }
+      if (e.phase === 'vote') cues.push({ key: `ev${g.day}${e.pk ? 'pk' : ''}`, say: '警上发言结束，请警下的玩家投票选警长。' });
       break;
     }
     case 'day': {
       const sp = g.speak;
       if (!sp) break;
+      const el = [...(g.log || [])].reverse().find(l => l.type === 'sheriff' && l.day === g.day);
+      if (el && !sp.pk) cues.push({ key: `sh${g.day}`, say: el.to ? `${seat(el.to)}当选警长。` : '本局没有警长。' });
+      if (sp.pick) cues.push({ key: `pick${g.day}`, say: `请警长${seat(sp.sheriff)}选择从哪边开始发言。` });
       if (!sp.pk) { const d = dawn(g, seat); if (d) cues.push(d); }
       else { const v = voteResult(g, seat); if (v) cues.push({ ...v, key: `${v.key}-pk` }); cues.push({ key: `pk${g.day}`, say: '平票，请 PK 台上的玩家再发言一次。' }); }
       const id = sp.order[sp.at];

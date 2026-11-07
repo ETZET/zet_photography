@@ -2,7 +2,8 @@
 import { useEffect } from 'react';
 import {
   MAX_PLAYERS, activeCard, alivePlayers, isWolfCamp, isNightWolf, voters, canSelfSave, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
-  ackLoss, castVote, candidates, speakerNow, nextSpeaker, cupidOf, cupidAct,
+  ackLoss, castVote, candidates, speakerNow, nextSpeaker, cupidOf, cupidAct, partnerOf,
+  electSign, electVote, electVoters, electCandidates, sheriffOrder, passBadge, badgePending,
 } from './wolfRules';
 
 const IS_DEV = import.meta.env.DEV;
@@ -63,10 +64,34 @@ export function botStep(room) {
     case 'confirm': {
       const b = g.confirm.ids.find(id => isBot(id) && !(id in g.confirm.acked));
       if (!b) return false;
+      if (badgePending(g, b)) { passBadge(g, b, Math.random() < 0.8 ? pick(others(b)) || null : null); return true; }
       ackLoss(g, b, { shoot: g.confirm.hunter === b && Math.random() < 0.7 ? pick(others(b)) || null : null });
       return true;
     }
+    case 'elect': {
+      const e = g.elect;
+      if (e.phase === 'sign') {
+        const b = alivePlayers(g).find(id => isBot(id) && !(id in e.sign));
+        if (!b) return false;
+        electSign(g, b, Math.random() < 0.4);
+        return true;
+      }
+      if (e.phase === 'vote') {
+        const b = electVoters(g).find(id => isBot(id) && !(id in e.votes));
+        if (!b) return false;
+        electVote(g, b, Math.random() < 0.1 ? null : pick(electCandidates(g)) || null);
+        return true;
+      }
+      const s = speakerNow(g);
+      if (!s || !isBot(s)) return false;
+      nextSpeaker(g, s);
+      return true;
+    }
     case 'day': case 'dusk': {
+      if (g.step === 'day' && g.speak?.pick && isBot(g.sheriff) && speakerNow(g) == null) {
+        sheriffOrder(g, g.sheriff, Math.random() < 0.5 ? 'up' : 'down');
+        return true;
+      }
       const s = speakerNow(g);
       if (!s || !isBot(s)) return false;
       nextSpeaker(g, s);
@@ -75,7 +100,7 @@ export function botStep(room) {
     case 'vote': {
       const b = voters(g).find(id => isBot(id) && !(id in g.votes) && !(g.pk || []).includes(id));
       if (!b) return false;
-      castVote(g, b, Math.random() < 0.1 ? null : pick(candidates(g).filter(x => x !== b)) || null);
+      castVote(g, b, Math.random() < 0.1 ? null : pick(candidates(g).filter(x => x !== b && x !== partnerOf(g, b))) || null);
       return true;
     }
     default:

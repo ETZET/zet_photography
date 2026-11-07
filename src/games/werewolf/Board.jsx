@@ -7,6 +7,7 @@ import {
   changedRules, isBaby, babies, isBabyWin, nextSpeaker, speakerNow, candidates, FORCE_AFTER_MS, cupidOf, isLover, partnerOf, thirdParty, cupidAct,
   swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct, ackLoss, settleNight, forceNight, startVote, castVote, nightfall,
   newGame, effectiveConfig,
+  electSign, electCloseSign, electQuit, electStartVote, electVote, electVoters, electCandidates, sheriffOrder, passBadge, badgePending, seerSeesWolf, seerByCamp,
 } from './wolfRules';
 
 const Title = ({ children }) => <div className="px-title">{children}</div>;
@@ -79,8 +80,9 @@ export default function Board({ room, myId, update, busy }) {
         return task === 'wolf' || (isNightWolf(g, myId) && myId in g.acts.wolves);
       }
       case 'witch': return mine === 'witch' && !g.acts.witchDone && mode === 'poison';
-      case 'confirm': return iConfirm && g.confirm.hunter === myId && id !== myId;
-      case 'vote': return isAlive(g, myId) && voters(g).includes(myId) && id !== myId && candidates(g).includes(id);
+      case 'confirm': return iConfirm && (badgePending(g, myId) || g.confirm.hunter === myId) && id !== myId;
+      case 'elect': return g.elect.phase === 'vote' && electVoters(g).includes(myId) && electCandidates(g).includes(id);
+      case 'vote': return isAlive(g, myId) && voters(g).includes(myId) && id !== myId && candidates(g).includes(id) && id !== partnerOf(g, myId);
       default: return false;
     }
   };
@@ -106,12 +108,18 @@ export default function Board({ room, myId, update, busy }) {
       const n = wolfMates.filter(w => g.acts.wolves[w] === id).length;
       if (n) badge = <span key={`k${n}`} className="px-tag evil px-stamp">刀{n > 1 ? `×${n}` : ''}</span>;
     }
+    const e = g.step === 'elect' ? g.elect : null;
+    if (!badge && e?.phase === 'vote') badge = electCandidates(g).includes(id) ? <span className="px-tag gold">警上</span>
+      : electVoters(g).includes(id) ? (id in e.votes ? <span key="ev1" className="px-tag ok px-stamp">已投</span> : <span key="ev0" className="px-tag">…</span>) : null;
+    if (!badge && e?.quit.includes(id)) badge = <span className="px-tag">退水</span>;
     if (!badge && speakerNow(g) === id) badge = <span key="spk" className="px-tag gold px-stamp">发言</span>;
+    if (!badge && e?.phase === 'speak' && electCandidates(g).includes(id)) badge = <span className="px-tag gold">警上</span>;
     if (!badge && id in seerSaw) badge = <span className={`px-tag ${seerSaw[id] ? 'evil' : 'good'}`}>{seerSaw[id] ? '狼' : '好'}</span>;
     return {
       top: (
         <>
           <Lives n={lives(g, id)} />
+          {g.sheriff === id && <PixelSprite name="badge" scale={2} title="警长" />}
           {wolfView && wolfMates.includes(id) && id !== myId && <span className="px-tag evil">狼</span>}
           {seesLove && isLover(g, id) && <PixelSprite name="heart" scale={2} title="情侣" />}
         </>
@@ -127,6 +135,7 @@ export default function Board({ room, myId, update, busy }) {
     switch (g.step) {
       case 'arrange': return <><div className="fs-24 c-gold shadow-px">排牌</div><div className="fs-12 c-dim">{g.seats.filter(id => g.hands[id].locked).length}/{g.seats.length} 人已排好</div></>;
       case 'night': case 'witch': return <><PixelSprite name="moon" scale={2} /><div className="fs-24 c-gold shadow-px">第 {g.night} 夜</div><div className="fs-12 c-dim">天黑请闭眼</div></>;
+      case 'elect': return <><PixelSprite name="badge" scale={3} /><div className="fs-24 c-gold shadow-px">{g.elect.pk ? '警长 PK' : '竞选警长'}</div><div className="fs-12">{({ sign: `${Object.keys(g.elect.sign).length}/${g.seats.filter(id => isAlive(g, id)).length} 已选`, speak: '警上发言', vote: `${Object.keys(g.elect.votes).length}/${electVoters(g).length} 已投` })[g.elect.phase]}</div></>;
       case 'confirm': return <><div className="fs-24 c-gold shadow-px">请稍候</div><div className="fs-12 c-dim">失去命的人在确认</div></>;
       case 'day': return g.speak?.pk
         ? <><div className="fs-24 c-gold shadow-px">平票 PK</div><div className="fs-12">再发言一轮</div></>
@@ -271,8 +280,9 @@ function switchNote(g, id) {
   const now = h.cards[1];
   const camp = isWolfCamp(g, id);
   const wakes = g.rules?.wake === 'all' ? camp : now === 'wolf';
-  const seen = g.rules?.seer === 'camp' ? (camp ? '狼人' : '好人') : (now === 'wolf' ? '狼人' : '好人');
-  return `你仍是${camp ? '狼人' : '好人'}阵营。现在是${ROLES[now].zh}：晚上${wakes ? '和狼队友一起睁眼' : '不再跟狼睁眼'}${ROLES[now].god ? `，${ROLES[now].zh}技能照常可用` : ''}；预言家现在验你是${seen}。`;
+  const seen = seerSeesWolf(g, id) ? '狼人' : '好人';
+  // a hint about the rules, not a check result: nobody was checked here
+  return `你仍是${camp ? '狼人' : '好人'}阵营。现在是${ROLES[now].zh}：晚上${wakes ? '和狼队友一起睁眼' : '不再跟狼睁眼'}${ROLES[now].god ? `，${ROLES[now].zh}技能照常可用` : ''}。（规则提示：之后如果有预言家验你，会显示${seen}。这不代表有人验过你。）`;
 }
 
 function MyHand({ g, myId }) {
@@ -312,7 +322,7 @@ function loveText(g, myId) {
       ? '你们一个是好人阵营、一个是狼人阵营（人狼恋），和丘比特一起变成丘比特阵营：要活到场上只剩你们自己人。'
       : `你们都是${isWolfCamp(g, myId) ? '狼人' : '好人'}阵营，继续为本阵营赢。一人出局，另一人殉情。` };
   }
-  if (cupidOf(g) === myId) return { pair: g.lovers, line: tp.length ? '他们是人狼恋：你和这对情侣组成丘比特阵营，要活到只剩你们。情侣殉情后你也不回好人阵营。' : '他们同阵营，你还是好人阵营。' };
+  if (cupidOf(g) === myId) return { pair: g.lovers, line: tp.length ? '他们是人狼恋：你和这对情侣组成丘比特阵营，要活到只剩你们。情侣殉情后你也不回好人阵营。' : `他们同阵营，你还是${isWolfCamp(g, myId) ? '狼人' : '好人'}阵营。` };
   return null;
 }
 function LoversNote({ g, myId }) {
@@ -363,7 +373,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
   const [double, setDouble] = useState(false);
   const alive = isAlive(g, myId);
   const h = g.hands[myId];
-  const now = useNow(g.step === 'day' || g.step === 'dusk');
+  const now = useNow(g.step === 'day' || g.step === 'dusk' || g.step === 'elect');
 
   switch (g.step) {
     case 'arrange': {
@@ -410,7 +420,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       );
       if (task === 'seer') return (
         <NightPanel title="预言家请睁眼" button={<NightBtn tone="gold" disabled={busy || !target} onClick={() => act(x => seerAct(x, myId, target))} data-testid="seer-act">{target ? <>查验 <Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
-          {g.rules?.seer === 'camp' ? '查验他的阵营（手里还有狼牌就是狼人）。' : '查验他当前那张牌，下面那张看不到。'}
+          {g.rules?.seer === 'campJgl' ? '查验他的阵营（手里还有狼牌就是狼人，但金刚狼会显示好人）。' : g.rules?.seer === 'camp' ? '查验他的阵营（手里还有狼牌就是狼人）。' : '查验他当前那张牌，下面那张看不到。'}
         </NightPanel>
       );
       if (g.step === 'night' && (task === 'wolf' || (isNightWolf(g, myId) && myId in g.acts.wolves))) {
@@ -459,7 +469,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       }
       // everyone else: same-looking screen with a private, meaningless pick
       const doneLine = mine === 'guard' && g.acts.guard ? <>今晚守护 <Who id={g.acts.guard} />。</>
-        : mine === 'seer' && g.acts.seer ? (() => { const l = g.seerLog.find(x => x.night === g.night && x.from === myId); return l && <><Who id={l.to} /> {g.rules?.seer === 'camp' ? '是' : '当前是'}{l.wolf ? '狼人' : '好人'}。</>; })()
+        : mine === 'seer' && g.acts.seer ? (() => { const l = g.seerLog.find(x => x.night === g.night && x.from === myId); return l && <><Who id={l.to} /> {seerByCamp(g.rules) ? '是' : '当前是'}{l.wolf ? '狼人' : '好人'}。</>; })()
         : mine === 'witch' && g.acts.witchDone && g.step === 'witch' ? '你已经用完今晚的药。'
         : isNightWolf(g, myId) && g.acts.wolves[myId] ? <>狼队已出刀。</> : null;
       return (
@@ -475,6 +485,15 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       if (!c.ids.includes(myId) || myId in c.acked) {
         return <NightPanel title="请稍候">失去命的人正在手机上确认，马上天亮。</NightPanel>;
       }
+      if (badgePending(g, myId)) return (
+        <NightPanel title="移交警徽" button={
+          <div className="grid grid-cols-2">
+            <button className="px-btn dark lg" disabled={busy} onClick={async () => { if (await confirm({ title: '撕掉警徽', body: '这局就没有警长了。', ok: '撕掉', tone: 'danger' })) act(x => passBadge(x, myId, null)); }} data-testid="badge-tear">撕警徽</button>
+            <button className="px-btn gold lg" disabled={busy || !target} onClick={() => act(x => passBadge(x, myId, target))} data-testid="badge-pass">{target ? <>交给 <Who id={target} /></> : '点人移交'}</button>
+          </div>}>
+          你出局了，你是警长：在圆桌上点一个人把警徽交给他，或者撕掉警徽。
+        </NightPanel>
+      );
       const isHunter = c.hunter === myId;
       const mineLost = c.lost.filter(l => l.id === myId);
       return (
@@ -494,6 +513,8 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       );
     }
 
+    case 'elect': return <ElectPanel {...{ g, myId, isHost, act, busy, target, now }} />;
+
     case 'day': {
       const sp = g.speak;
       const spk = speakerNow(g);
@@ -504,6 +525,22 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       return <>
         <Title>{sp?.pk ? `第 ${g.day} 天 · 平票 PK` : `第 ${g.day} 天 · 天亮了`}</Title>
         {/* the action first, so it's on screen without scrolling; details below */}
+        {sp?.pick && !spk && (
+          <div className="mb-2" data-testid="sheriff-order">
+            {(g.sheriff === myId || isHost) ? <>
+              <div className="text-center mb-1">{g.sheriff === myId ? '你是警长，' : <>警长 <Who id={g.sheriff} /> 的手机没反应时房主可以代选。</>}选从哪边开始发言（警长最后发言）</div>
+              <div className="grid grid-cols-2">
+                {['down', 'up'].map(dir => {
+                  const n = g.seats.length; const at = g.seats.indexOf(g.sheriff); const d = dir === 'up' ? 1 : -1;
+                  let k = 1; while (k < n && !isAlive(g, g.seats[(((at + d * k) % n) + n) % n])) k++;
+                  return <button key={dir} className="px-btn gold lg" disabled={busy} onClick={() => act(x => sheriffOrder(x, myId, dir, isHost))} data-testid={`sheriff-${dir}`}>
+                    从 {(((at + d * k) % n) + n) % n + 1} 号开始<span className="fs-12 block">号码{dir === 'up' ? '从小到大' : '从大到小'}</span>
+                  </button>;
+                })}
+              </div>
+            </> : <div className="text-center">等警长 <Who id={g.sheriff} /> 决定从哪边开始发言…</div>}
+          </div>
+        )}
         {spk === myId ? (
           <>
             <div className="text-center mb-1">轮到你{(sp.lastWords || []).includes(myId) ? '留遗言' : '发言'} · {fmt(secs)}</div>
@@ -515,7 +552,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
         {isHost && (
           <div className="grid grid-cols-2 mb-2">
             <button className="px-btn dark" disabled={busy || !spk} onClick={() => act(x => nextSpeaker(x, myId, true))} data-testid="speak-skip">下一位</button>
-            <button className={`px-btn ${allDone ? 'gold' : 'dark'}`} disabled={busy} onClick={() => act(startVote)} data-testid="start-vote">{sp?.pk ? '开始 PK 投票' : '开始投票'}</button>
+            <button className={`px-btn ${allDone ? 'gold' : 'dark'}`} disabled={busy || !!sp?.pick} onClick={() => act(startVote)} data-testid="start-vote">{sp?.pk ? '开始 PK 投票' : '开始投票'}</button>
           </div>
         )}
         {sp && (
@@ -536,7 +573,9 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
         {sp && !sp.pk && (
           <p className="fs-12 c-dim" data-testid="speak-rule">
             {sp.lastWords?.length ? <>首夜出局的 <WhoList ids={sp.lastWords} /> 先留遗言。</> : null}
-            {sp.after
+            {sp.sheriff
+              ? (sp.pick ? null : <>警长 <Who id={sp.sheriff} /> 选择号码{sp.dir === 'up' ? '从小到大' : '从大到小'}发言，警长最后发言归票。</>)
+              : sp.after
               ? <>从 <Who id={sp.after} /> 的{sp.dir === 'up' ? '下一位' : '上一位'}开始（方向随机），号码{sp.dir === 'up' ? '从小到大' : '从大到小'}轮流发言。</>
               : <>平安夜，随机从 {seatNo(sp.order[0])} 号开始，号码{sp.dir === 'up' ? '从小到大' : '从大到小'}轮流发言。</>}
           </p>
@@ -552,7 +591,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       const my = g.votes[myId];
       return <>
         <Title>{g.pk ? 'PK 投票' : `放逐投票 · 第 ${g.day} 天`}</Title>
-        <p className="fs-12 mb-3">{g.pk ? <>只能投 <WhoList ids={g.pk} />。再平票就无人出局。</> : '在圆桌上点你要投的人。最高票失去一条命，平票'}{!g.pk && (g.rules?.pk === 'yes' ? '进入 PK。' : '无人出局。')}所有人投完前可以改票。</p>
+        <p className="fs-12 mb-3">{g.pk ? <>只能投 <WhoList ids={g.pk} />。再平票就无人出局。</> : '在圆桌上点你要投的人。最高票失去一条命，平票'}{!g.pk && (g.rules?.pk === 'yes' ? '进入 PK。' : '无人出局。')}所有人投完前可以改票。{isLover(g, myId) && <> 你不能投你的情侣 <Who id={partnerOf(g, myId)} />。</>}{g.sheriff && isAlive(g, g.sheriff) && <> 警长 <Who id={g.sheriff} /> 的票算 1.5 票。</>}</p>
         {myId in g.votes && <p className="mb-3">你投了 {my ? <Who id={my} /> : '弃票'}。</p>}
         <div className="grid grid-cols-2">
           <button className="px-btn dark lg" disabled={busy || (myId in g.votes && my === null)} onClick={() => act(x => castVote(x, myId, null))} data-testid="vote-skip">弃票</button>
@@ -658,27 +697,102 @@ function PublicLog({ g }) {
       <div className="flex flex-col gap-3 px-scroll fs-12" data-testid="log">
         {items.map((e, i) => {
           if (e.type === 'night') return <div key={i}><span className="c-dim">第 {e.night} 夜：</span>{e.lost.length ? groupLost(e.lost).map(l => <span key={l.id} className="mr-1"><Who id={l.id} />{l.cards.map((c, j) => <CardTag key={j} card={c} />)} {l.n > 1 ? '失去两条命' : '失去一条命'}</span>) : '平安夜'}</div>;
+          if (e.type === 'sheriff') return <div key={i}><span className="c-dim">第 {e.day} 天{e.pk ? ' PK' : ''}竞选：</span>{e.to ? <><Who id={e.to} tone="gold" /> 当选警长{e.reason === 'only' ? '（只剩一人在警上）' : ''}</> : ({ none: '没人上警，没有警长', novoters: '所有人都上警，警徽流失', tie: '再次平票，警徽流失', abstain: '全员弃票，警徽流失' })[e.reason] || '警徽流失'}{e.votes && <VoteRows votes={e.votes} />}</div>;
+          if (e.type === 'sheriffTie') return <div key={i}><span className="c-dim">第 {e.day} 天竞选：</span>平票，<WhoList ids={e.tie} /> PK<VoteRows votes={e.votes} /></div>;
+          if (e.type === 'badge') return <div key={i}><span className="c-dim">第 {e.day} 天：</span>警长 <Who id={e.from} /> {e.to ? <>把警徽交给 <Who id={e.to} tone="gold" /></> : '撕掉了警徽'}</div>;
           if (e.type === 'shot') return <div key={i}><span className="c-dim">第 {e.day} 天：</span>{e.from ? <>猎人 <Who id={e.from} /> </> : '有人开枪，'}{e.to ? <>带走了 <Who id={e.to} />{e.card && <CardTag card={e.card} />} 一条命</> : '没有开枪'}{e.love && <>，<WhoList ids={e.love} /> 殉情出局</>}</div>;
-          if (e.type === 'vote') {
-            const by = {};
-            Object.entries(e.votes).forEach(([v, t]) => { (by[t || '-'] ||= []).push(v); });
-            const rows = Object.entries(by).sort((a, b) => (a[0] === '-') - (b[0] === '-') || b[1].length - a[1].length);
-            return (
-              <div key={i}>
-                <div><span className="c-dim">第 {e.day} 天{e.pk ? ' PK' : ''}投票：</span>{e.out ? <><Who id={e.out} tone="evil" />{e.card && <CardTag card={e.card} />} 被投出一条命</> : e.tie ? '平票，无人出局' : '全员弃票'}{e.love && <>，<WhoList ids={e.love} /> 殉情出局</>}</div>
-                {rows.map(([t, vs]) => (
-                  <div key={t} className="ml-3 c-dim flex flex-wrap items-center gap-x-1">
-                    {t === '-' ? <span>弃票</span> : <><Who id={t} /><span>{vs.length} 票</span></>}<span>←</span><WhoList ids={vs} />
-                  </div>
-                ))}
-              </div>
-            );
-          }
+          if (e.type === 'vote') return (
+            <div key={i}>
+              <div><span className="c-dim">第 {e.day} 天{e.pk ? ' PK' : ''}投票：</span>{e.out ? <><Who id={e.out} tone="evil" />{e.card && <CardTag card={e.card} />} 被投出一条命</> : e.tie ? '平票，无人出局' : '全员弃票'}{e.love && <>，<WhoList ids={e.love} /> 殉情出局</>}</div>
+              <VoteRows votes={e.votes} sheriff={e.sheriff} />
+            </div>
+          );
           return null;
         })}
       </div>
     </div>
   );
+}
+
+/** Who voted for whom; the 警长's vote counts 1.5. */
+function VoteRows({ votes, sheriff }) {
+  const by = {};
+  Object.entries(votes).forEach(([v, t]) => { (by[t || '-'] ||= []).push(v); });
+  const w = vs => vs.reduce((n, v) => n + (v === sheriff ? 1.5 : 1), 0);
+  const rows = Object.entries(by).sort((a, b) => (a[0] === '-') - (b[0] === '-') || w(b[1]) - w(a[1]));
+  return rows.map(([t, vs]) => (
+    <div key={t} className="ml-3 c-dim flex flex-wrap items-center gap-x-1">
+      {t === '-' ? <span>弃票</span> : <><Who id={t} /><span>{w(vs)} 票</span></>}<span>←</span><WhoList ids={vs} />
+    </div>
+  ));
+}
+
+/** 警长竞选 (day 1): sign up → speeches (退水 allowed) → 警下 vote → maybe one PK. */
+function ElectPanel({ g, myId, isHost, act, busy, target, now }) {
+  const e = g.elect;
+  const alive = isAlive(g, myId);
+  const spk = speakerNow(g);
+  const secs = Math.max(0, Math.floor((now - (e.since || now)) / 1000));
+  const title = `第 ${g.day} 天 · ${e.pk ? '警长 PK' : '竞选警长'}`;
+  if (e.phase === 'sign') {
+    const mine = e.sign[myId];
+    return <>
+      <Title>{title}</Title>
+      <p className="fs-12 mb-3">警长的票算 1.5 票，每天决定从哪边开始发言、自己最后发言归票。想当警长就上警；上警的人不能投票。大家都选完才公布谁上警。</p>
+      {!alive ? <p>你已出局，不能上警。</p> : <>
+        {myId in e.sign && <p className="mb-2 text-center">你选了：<b>{mine ? '上警' : '不上警'}</b>（大家选完前可以改）</p>}
+        <div className="grid grid-cols-2">
+          <button className="px-btn dark lg" disabled={busy || mine === false} onClick={() => act(x => electSign(x, myId, false))} data-testid="elect-no">不上警</button>
+          <button className="px-btn gold lg" disabled={busy || mine === true} onClick={() => act(x => electSign(x, myId, true))} data-testid="elect-run">上警</button>
+        </div>
+      </>}
+      {isHost && <button className="px-btn dark block mt-2" disabled={busy} onClick={() => act(x => electCloseSign(x, true))} data-testid="elect-close">没选的算不上警，结束报名</button>}
+    </>;
+  }
+  const running = electCandidates(g);
+  const iRun = running.includes(myId);
+  if (e.phase === 'speak') {
+    const allDone = e.at >= e.order.length;
+    return <>
+      <Title>{title}</Title>
+      {spk === myId ? <>
+        <div className="text-center mb-1">轮到你竞选发言 · {fmt(secs)}</div>
+        <button className="px-btn gold lg block mb-2" disabled={busy} onClick={() => act(x => nextSpeaker(x, myId))} data-testid="speak-done">我说完了</button>
+      </> : spk ? <div className={`text-center mb-2 ${secs > SPEAK_HINT_S ? 'c-evil' : ''}`}>正在竞选发言：<Who id={spk} /> · {fmt(secs)}</div>
+        : allDone && <div className="text-center mb-2">警上发言结束</div>}
+      {isHost && (
+        <div className="grid grid-cols-2 mb-2">
+          <button className="px-btn dark" disabled={busy || !spk} onClick={() => act(x => nextSpeaker(x, myId, true))} data-testid="speak-skip">下一位</button>
+          <button className={`px-btn ${allDone ? 'gold' : 'dark'}`} disabled={busy} onClick={() => act(x => electStartVote(x, true))} data-testid="elect-start-vote">{e.pk ? '开始 PK 投票' : '开始警长投票'}</button>
+        </div>
+      )}
+      <p className="fs-12 mb-2">警上：<WhoList ids={running} />{e.quit.length > 0 && <>；退水：<WhoList ids={e.quit} /></>}</p>
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-2 mb-2" data-testid="speak-order">
+        {e.order.map((id, i) => (
+          <span key={id} className={`inline-flex items-center ${i < e.at ? 'opacity-40' : ''}`}>
+            <Who id={id} tone={i === e.at ? 'gold' : undefined} />{i < e.order.length - 1 && <span className="c-dim mx-1">›</span>}
+          </span>
+        ))}
+      </div>
+      {iRun && !e.pk && <button className="px-btn dark block" disabled={busy} onClick={() => act(x => electQuit(x, myId))} data-testid="elect-quit">退水（不竞选了）</button>}
+      {e.pk && <p className="fs-12 c-dim">平票的 <WhoList ids={e.pk} /> 再各说一轮，警下再投一次；再平票警徽流失。</p>}
+      {!isHost && <div className="text-center c-dim fs-12 mt-2">发言结束后由房主开启投票</div>}
+    </>;
+  }
+  // vote
+  const voters = electVoters(g);
+  const my = e.votes[myId];
+  return <>
+    <Title>{title} · 投票</Title>
+    {!voters.includes(myId) ? <p>{alive ? '你上过警，这一轮不投票。' : '你已出局，不能投票。'}</p> : <>
+      <p className="fs-12 mb-3">在圆桌上点警上的一个人：<WhoList ids={running} />。最高票当选警长{e.pk ? '，再平票警徽流失' : '，平票 PK 一次'}。所有人投完前可以改票。</p>
+      {myId in e.votes && <p className="mb-3">你投了 {my ? <Who id={my} /> : '弃票'}。</p>}
+      <div className="grid grid-cols-2">
+        <button className="px-btn dark lg" disabled={busy || (myId in e.votes && my === null)} onClick={() => act(x => electVote(x, myId, null))} data-testid="elect-vote-skip">弃票</button>
+        <button className="px-btn gold lg" disabled={busy || !target || my === target} onClick={() => act(x => electVote(x, myId, target))} data-testid="elect-vote-go">{target ? <>投 <Who id={target} /></> : '选人'}</button>
+      </div>
+    </>}
+  </>;
 }
 
 // --------------------------------------------------------- overlays ---
@@ -773,9 +887,9 @@ function SeerReveal({ g, myId, roomKey }) {
         <div className="fs-12 c-dim">水晶球显示（只有你看得到）</div>
         <Who id={last.to} size="lg" />
         <div className="px-stamp" style={{ animationDelay: '0.5s' }}>
-          <div className={`fs-36 shadow-px ${last.wolf ? 'c-evil' : 'c-good'}`}>{g.rules?.seer === 'camp' ? '' : '当前是'}{last.wolf ? '狼人' : '好人'}</div>
+          <div className={`fs-36 shadow-px ${last.wolf ? 'c-evil' : 'c-good'}`}>{seerByCamp(g.rules) ? '' : '当前是'}{last.wolf ? '狼人' : '好人'}</div>
         </div>
-        <div className="fs-12 c-dim">{g.rules?.seer === 'camp' ? '验的是阵营' : '提醒：他下面那张牌可能不一样'}</div>
+        <div className="fs-12 c-dim">{seerByCamp(g.rules) ? '验的是阵营' : '提醒：他下面那张牌可能不一样'}</div>
         <button className="px-btn gold" onClick={done} data-testid="close-seer">知道了</button>
       </div>
     </div>

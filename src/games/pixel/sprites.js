@@ -74,6 +74,19 @@ export const SPRITES = {
     '...kwk.....y..',
     '....kk........',
   ],
+  // 警长 badge: a gold star
+  badge: [
+    '....k....',
+    '...kyk...',
+    '...kyk...',
+    'kkkyyykkk',
+    'kyyywyyyk',
+    '.kyyyyyk.',
+    '..kyYyk..',
+    '.kyYkYyk.',
+    '.kYk.kYk.',
+    '.kk...kk.',
+  ],
   // warning mark for balance / deck notes
   warn: [
     '...kk...',

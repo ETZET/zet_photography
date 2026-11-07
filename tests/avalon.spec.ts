@@ -95,13 +95,19 @@ test('full Avalon game across five tabs', async ({ browser }) => {
   await host.getByRole('button', { name: 'GAME', exact: true }).click();
   await snap(host, 'hub');
   await host.getByText('阿瓦隆').first().click();
-  // Nickname budget: 5 CJK chars or 10 Latin letters.
+  // Nickname budget: 10 CJK chars or 20 Latin letters.
   const nameInput = host.getByTestId('name-input');
-  await nameInput.fill('abcdefghijklmnop');
-  await expect(nameInput).toHaveValue('abcdefghij');
-  await nameInput.fill('一二三四五六七');
-  await expect(nameInput).toHaveValue('一二三四五');
-  await expect(host.getByTestId('name-units')).toHaveText('10/10');
+  await nameInput.fill('abcdefghijklmnopqrstuvwxyz');
+  await expect(nameInput).toHaveValue('abcdefghijklmnopqrst');
+  await nameInput.fill('一二三四五六七八九十甲乙');
+  await expect(nameInput).toHaveValue('一二三四五六七八九十');
+  await expect(host.getByTestId('name-units')).toHaveText('20/20');
+  // The dice button picks a fun preset name, a different one each roll.
+  await host.getByTestId('random-name').click();
+  const rolled = await nameInput.inputValue();
+  expect(rolled.length).toBeGreaterThan(0);
+  await host.getByTestId('random-name').click();
+  await expect(nameInput).not.toHaveValue(rolled);
   await host.getByPlaceholder('亚瑟').fill(NAMES[0]);
   await snap(host, 'entry');
   await host.getByRole('button', { name: '创建房间' }).click();
