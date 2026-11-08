@@ -9,10 +9,17 @@ function dawn(g, seat) {
   const n = g.lastNight?.night;
   if (!n || n !== g.day) return null;
   const ids = uniq((g.lastNight.lost || []).map(l => l.id));
-  return {
-    key: `dawn${n}`,
-    say: ['天亮了，所有人请睁眼。', ids.length ? `昨晚，${ids.map(seat).join('、')}失去了一条命。` : '昨晚是平安夜。'],
-  };
+  const news = ids.length ? `昨晚，${ids.map(seat).join('、')}失去了一条命。` : '昨晚是平安夜。';
+  // with a 警长 election, 天亮了 was already said before it; now only the news
+  const afterElection = n === 1 && g.elected;
+  return { key: `dawn${n}`, say: afterElection ? ['现在公布昨晚的情况。', news] : ['天亮了，所有人请睁眼。', news] };
+}
+
+/** 警长竞选 result, said once when the election ends. */
+function sheriffCue(g, seat) {
+  const el = (g.log || []).find(l => l.type === 'sheriff');
+  if (!el || el.day !== g.day) return null;
+  return { key: `sh${el.day}`, say: el.to ? `${seat(el.to)}当选警长。` : '本局没有警长。' };
 }
 
 function voteResult(g, seat) {
@@ -37,6 +44,8 @@ export function narrate(g, { seat }) {
       cues.push({ key: `w${g.night}`, say: '女巫请睁眼，决定今晚是否用药。' });
       break;
     case 'confirm': {
+      const sc = sheriffCue(g, seat);
+      if (sc && g.confirm?.then === 'day') cues.push(sc);
       if (g.confirm?.then === 'day') { const d = dawn(g, seat); if (d) cues.push(d); }
       else { const v = voteResult(g, seat); if (v) cues.push(v); }
       cues.push({ key: `cf${g.day}${g.confirm?.then}`, say: '请失去生命的玩家在手机上确认。' });
@@ -47,7 +56,7 @@ export function narrate(g, { seat }) {
     case 'elect': {
       const e = g.elect;
       if (!e) break;
-      if (!e.pk) { const d = dawn(g, seat); if (d) cues.push(d); }
+      cues.push({ key: `de${g.day}`, say: '天亮了，所有人请睁眼。' });
       if (e.phase === 'sign') cues.push({ key: `es${g.day}`, say: '现在竞选警长。想上警的玩家，请在手机上选择上警。' });
       if (e.pk) cues.push({ key: `epk${g.day}`, say: '警长竞选平票，请平票的玩家再发言一次。' });
       if (e.phase === 'speak') {
@@ -60,11 +69,11 @@ export function narrate(g, { seat }) {
     case 'day': {
       const sp = g.speak;
       if (!sp) break;
-      const el = [...(g.log || [])].reverse().find(l => l.type === 'sheriff' && l.day === g.day);
-      if (el && !sp.pk) cues.push({ key: `sh${g.day}`, say: el.to ? `${seat(el.to)}当选警长。` : '本局没有警长。' });
-      if (sp.pick) cues.push({ key: `pick${g.day}`, say: `请警长${seat(sp.sheriff)}选择从哪边开始发言。` });
+      const sc = sheriffCue(g, seat);
+      if (sc && !sp.pk) cues.unshift(sc);
       if (!sp.pk) { const d = dawn(g, seat); if (d) cues.push(d); }
       else { const v = voteResult(g, seat); if (v) cues.push({ ...v, key: `${v.key}-pk` }); cues.push({ key: `pk${g.day}`, say: '平票，请 PK 台上的玩家再发言一次。' }); }
+      if (sp.pick && !sp.order[sp.at]) cues.push({ key: `pick${g.day}`, say: `请警长${seat(sp.sheriff)}选择从哪边开始发言。` });
       const id = sp.order[sp.at];
       if (id) {
         const lw = (sp.lastWords || []).includes(id);

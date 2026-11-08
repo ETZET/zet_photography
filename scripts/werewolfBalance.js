@@ -2,8 +2,11 @@
 // picks the deck closest to 50/50 for every player count × combination of the
 // high-impact house rules, and writes src/games/werewolf/balanceTable.js.
 //
-//   node scripts/werewolfBalance.js            # fill in rule combos missing from the table
-//   node scripts/werewolfBalance.js --all      # recompute everything (~20 min)
+//   node scripts/werewolfBalance.js                 # fill in rule combos missing from the table
+//   node scripts/werewolfBalance.js --all           # recompute everything
+//   node scripts/werewolfBalance.js --redo cupid=yes   # recompute combos with that rule value
+//   node scripts/werewolfBalance.js --effects       # per-setting win rates for every preset (effectTable.js)
+//   --workers N   run on N processes (default: CPU count - 1)
 //
 // Low-impact variants (seer sees camp, witch self-save, guard+save, reveal
 // card, three quiet nights, PK on ties) moved the good win rate by ≤5 points in testing and are left at their
@@ -20,6 +23,9 @@
 //    guard protects the claimed seer; witch saves on night 1 / the seer,
 //    poisons a claimed wolf; 金刚狼 double-strikes the seer or from night 2.
 import fs from 'fs';
+import os from 'os';
+import { fork } from 'child_process';
+import { fileURLToPath } from 'url';
 import * as R from '../src/games/werewolf/wolfRules.js';
 
 const READ = 0.35;
@@ -93,7 +99,7 @@ function playOne(n, cfg) {
           const prey = alive.filter(x => !camp(x) && x !== R.partnerOf(g, id));
           const mate = R.activeWolves(g).find(w => w !== id && g.acts.wolves[w]);
           const t = mate ? g.acts.wolves[mate] : (seerClaimer && prey.includes(seerClaimer) ? seerClaimer : pick(prey.length ? prey : others(id)));
-          R.wolfAct(g, id, t, { double: R.canDouble(g, id) && !rules.noSkill && (t === seerClaimer || g.night >= 2) && rnd() < 0.7 });
+          R.wolfAct(g, id, t, { double: R.canDouble(g, id) && !rules.noSkill && rules.jglSkill !== 'no' && (t === seerClaimer || g.night >= 2) && rnd() < 0.7 });
         }
         break;
       }
@@ -110,7 +116,31 @@ function playOne(n, cfg) {
         else R.witchAct(g, w, {});
         break;
       }
+      case 'elect': {
+        // 警长竞选: the seer runs with a check in hand; others run sometimes, wolves a bit more (fake seer)
+        const e = g.elect;
+        if (e.phase === 'sign') {
+          for (const id of alive) {
+            if (id in e.sign) continue;
+            const seer = R.activeCard(g, id) === 'seer' && !camp(id);
+            R.electSign(g, id, seer || rnd() < (camp(id) ? 0.35 : 0.2));
+            if (g.step !== 'elect' || g.elect?.phase !== 'sign') break;
+          }
+        } else if (e.phase === 'speak') {
+          R.electStartVote(g, true);
+        } else {
+          const v = R.electVoters(g).find(x => !(x in e.votes));
+          const cand = R.electCandidates(g);
+          const seer = cand.find(x => R.activeCard(g, x) === 'seer' && !camp(x));
+          let t;
+          if (camp(v)) t = cand.find(camp) || pick(cand);
+          else t = seer && rnd() < 0.6 ? seer : pick(cand);
+          R.electVote(g, v, t || null);
+        }
+        break;
+      }
       case 'day': {
+        if (g.speak?.pick) R.sheriffOrder(g, g.sheriff, rnd() < 0.5 ? 'up' : 'down', true);
         for (const l of g.seerLog) {
           if (!R.isAlive(g, l.from) || camp(l.from)) continue;
           seerClaimer = l.from;
@@ -132,6 +162,12 @@ function playOne(n, cfg) {
       case 'confirm': {
         const c = g.confirm;
         const h = c.ids.find(x => !(x in c.acked));
+        if (R.badgePending(g, h)) {
+          // the fallen 警长 hands the badge to a trusted ally
+          const allies = others(h).filter(x => (camp(h) ? camp(x) : !camp(x) && !claimedWolf.has(x)));
+          R.passBadge(g, h, pick(allies.filter(x => claimedGood.has(x))) || pick(allies) || null);
+          break;
+        }
         let shoot = null;
         if (c.hunter === h) {
           const sus = [...claimedWolf].filter(x => R.isAlive(g, x) && x !== h);
@@ -150,8 +186,8 @@ function playOne(n, cfg) {
         const others = id => cand.filter(x => x !== id);
         let t;
         if (camp(v)) {
-          const good = others(v).filter(x => !camp(x));
-          t = seerClaimer && good.includes(seerClaimer) && rnd() < 0.6 ? seerClaimer : pick(good.length ? good : others(v));
+          const good = others(v).filter(x => !camp(x) && x !== R.partnerOf(g, v));
+          t = seerClaimer && good.includes(seerClaimer) && rnd() < 0.6 ? seerClaimer : pick(good.length ? good : others(v).filter(x => x !== R.partnerOf(g, v)));
         } else {
           // 金宝宝 know each other and never vote a fellow 金宝宝
           const ok = x => !(R.isBabyWin(rules) && rules.babyMeet !== 'no' && R.isBaby(g, v) && R.isBaby(g, x)) && x !== R.partnerOf(g, v);
@@ -218,58 +254,173 @@ function tune(n, rules) {
 }
 
 const MAIN = process.argv[1]?.endsWith('werewolfBalance.js');
-const ALL = process.argv.includes('--all');
+const arg = name => process.argv.includes(name);
+const ALL = arg('--all');
+const EFFECTS = arg('--effects');
+const CHILD = process.argv.includes('--child');
+const WORKERS = Number(process.argv[process.argv.indexOf('--workers') + 1]) || Math.max(1, os.cpus().length - 1);
 // --redo key=value  recompute only the combos with that rule value
 const REDO = process.argv.filter((a, i) => process.argv[i - 1] === '--redo').map(a => a.split('='));
-let prev = {};
-try { prev = (await import('../src/games/werewolf/balanceTable.js')).BALANCE_TABLE; } catch { /* first run */ }
-
-const combos = [{}];
-for (const key of [...R.TUNED_KEYS, 'cupid']) {
-  const v = R.VARIANTS.find(x => x.key === key);
-  const next = [];
-  // options flagged as extras (4th field) only appear in presets, not in the full grid
-  for (const c of combos) for (const [val, , , extra] of v.opts) if (!extra) next.push({ ...c, [key]: val });
-  combos.splice(0, combos.length, ...next);
-}
-// presets built on extra options (村规金宝宝), with and without 丘比特
-for (const p of R.PRESETS.filter(x => x.min)) for (const cupid of ['no', 'yes']) combos.push({ ...p.rules, cupid, min: p.min });
-
-const table = {};
-const report = [];
-const t0 = Date.now();
 const short = { seer: '预', witch: '女', hunter: '猎', guard: '守' };
-for (const combo of MAIN ? combos : []) {
-  const { min = 0, ...rest } = combo;
-  const rules = { ...R.DEFAULT_RULES, ...rest };
-  const key = R.tableKey(rules);
-  const redo = REDO.some(([k, v]) => rules[k] === v);
-  if (!ALL && !redo && prev[key]) table[key] = prev[key]; // reuse; pass --all to recompute everything
-  else {
-    table[key] = {};
-    for (let n = Math.max(min, rules.cupid === 'yes' ? R.CUPID_MIN : R.MIN_PLAYERS); n <= R.MAX_PLAYERS; n++) table[key][n] = tune(n, rules);
+
+// ------------------------------------------------------------- jobs ---
+// A job is a plain JSON description so it can be shipped to a worker process.
+function runJob(job) {
+  if (job.kind === 'tune') {
+    const out = {};
+    for (let n = job.from; n <= R.MAX_PLAYERS; n++) out[n] = tune(n, job.rules);
+    return out;
   }
-  const line = `| ${key} | ` + Object.entries(table[key]).map(([, r]) => `狼${r.wolves}${r.gods.map(x => short[x]).join('')} ${r.good}%`).join(' | ') + ' |';
-  report.push(line);
-  console.log(line, `${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  // effect: one deck, one rule set → good win %
+  const e = estimate(job.n, { wolves: job.wolves, gods: job.gods, rules: job.rules, order: job.rules.order }, EFFECT_GAMES);
+  return Math.round(e.good * 1000) / 10;
+}
+const EFFECT_GAMES = 2000;
+
+/** Run jobs on WORKERS child processes (same script, --child), results in job order. */
+function runAll(jobs) {
+  if (WORKERS <= 1 || jobs.length <= 1) return Promise.resolve(jobs.map(runJob));
+  return new Promise((resolve, reject) => {
+    const results = new Array(jobs.length);
+    let next = 0;
+    let done = 0;
+    let live = 0;
+    const t0 = Date.now();
+    const spawn = () => {
+      const child = fork(fileURLToPath(import.meta.url), ['--child'], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+      live++;
+      const feed = () => {
+        if (next >= jobs.length) { child.send({ quit: true }); return; }
+        const i = next++;
+        child.send({ i, job: jobs[i] });
+      };
+      child.on('message', ({ i, out }) => {
+        results[i] = out;
+        done++;
+        if (done % Math.max(1, Math.floor(jobs.length / 20)) === 0 || done === jobs.length) {
+          process.stdout.write(`  ${done}/${jobs.length} jobs, ${((Date.now() - t0) / 1000).toFixed(0)}s\n`);
+        }
+        feed();
+      });
+      child.on('exit', code => {
+        live--;
+        if (code) reject(new Error(`worker exited ${code}`));
+        else if (!live) resolve(results);
+      });
+      feed();
+    };
+    for (let k = 0; k < Math.min(WORKERS, jobs.length); k++) spawn();
+  });
 }
 
-if (MAIN) {
-fs.writeFileSync(new URL('../src/games/werewolf/balanceTable.js', import.meta.url), `// Generated by scripts/werewolfBalance.js — do not edit by hand.
+if (CHILD) {
+  process.on('message', msg => {
+    if (msg.quit) { process.exit(0); return; }
+    process.send({ i: msg.i, out: runJob(msg.job) });
+  });
+}
+
+// ----------------------------------------------------------- tuning ---
+async function tuneTable() {
+  let prev = {};
+  try { prev = (await import('../src/games/werewolf/balanceTable.js')).BALANCE_TABLE; } catch { /* first run */ }
+  const combos = [{}];
+  for (const key of [...R.TUNED_KEYS, 'cupid']) {
+    const v = R.VARIANTS.find(x => x.key === key);
+    const next = [];
+    // options flagged as extras (4th field) only appear in presets, not in the full grid
+    for (const c of combos) for (const [val, , , extra] of v.opts) if (!extra) next.push({ ...c, [key]: val });
+    combos.splice(0, combos.length, ...next);
+  }
+  // presets built on extra options (村规金宝宝), with and without 丘比特
+  // (and, for a preset that ships with the 警长, also without it, since DIY can switch it off)
+  for (const p of R.PRESETS.filter(x => x.min)) {
+    for (const cupid of ['no', 'yes']) for (const sheriff of new Set([p.rules.sheriff || 'no', 'no'])) combos.push({ ...p.rules, cupid, sheriff, min: p.min });
+  }
+
+  const table = {};
+  const jobs = [];
+  const keys = [];
+  for (const combo of combos) {
+    const { min = 0, ...rest } = combo;
+    const rules = { ...R.DEFAULT_RULES, ...rest };
+    const key = R.tableKey(rules);
+    const redo = REDO.some(([k, v]) => rules[k] === v);
+    if (!ALL && !redo && prev[key]) { table[key] = prev[key]; continue; } // reuse; --all recomputes
+    keys.push(key);
+    jobs.push({ kind: 'tune', rules, from: Math.max(min, rules.cupid === 'yes' ? R.CUPID_MIN : R.MIN_PLAYERS) });
+  }
+  console.log(`tuning ${jobs.length} rule combos on ${WORKERS} workers (${combos.length - jobs.length} reused)`);
+  (await runAll(jobs)).forEach((out, i) => { table[keys[i]] = out; });
+
+  const report = Object.entries(table).map(([key, row]) => `| ${key} | ` + Object.entries(row).map(([, r]) => `狼${r.wolves}${r.gods.map(x => short[x]).join('')} ${r.good}%`).join(' | ') + ' |');
+  fs.writeFileSync(new URL('../src/games/werewolf/balanceTable.js', import.meta.url), `// Generated by scripts/werewolfBalance.js — do not edit by hand.
 // For every combination of ${R.TUNED_KEYS.join(' | ')} and player count:
 //   good/days/wolves/gods: recommended deck, good-camp win % (${CHECK_GAMES} games), avg days
 //   grid["wolves:godMask"]: good-camp win % for every deck (${GRID_GAMES} games); godMask bits = ${R.GODS.join(', ')}
 export const BALANCE_TABLE = ${JSON.stringify(table)};
 `);
-fs.writeFileSync(new URL('../docs/werewolf-balance.md', import.meta.url), `# 双身份狼人 平衡模拟
+  fs.writeFileSync(new URL('../docs/werewolf-balance.md', import.meta.url), `# 双身份狼人 平衡模拟
 
-由 \`node scripts/werewolfBalance.js\` 生成。中等水平启发式 AI：预言家公开报验人，村民按共识投票（无信息时 35% 概率投中狼），狼人抱团并优先刀预言家，守卫守预言家，女巫首夜救人、毒被指认的狼，金刚狼刀预言家或第二晚起使用。
+由 \`node scripts/werewolfBalance.js\` 生成。中等水平启发式 AI：预言家公开报验人，村民按共识投票（无信息时 35% 概率投中狼），狼人抱团并优先刀预言家，守卫守预言家，女巫首夜救人、毒被指认的狼，金刚狼刀预言家或第二晚起使用；警长局里预言家上警、好人多半投给预言家，警长的票算 1.5 票。
 
-每格：推荐牌组 + 好人胜率（${CHECK_GAMES} 局复测）。规则键依次为 ${R.TUNED_KEYS.join(' / ')}。
+每格：推荐牌组 + 好人胜率（${CHECK_GAMES} 局复测）。规则键依次为 ${R.TUNED_KEYS.join(' / ')}，后缀：|cupid 丘比特、|sj 预言家验阵营（金刚狼验成好人）、|nb 金宝宝不互认、|p3 三个平安夜、|sh 警长。
 
 | 规则 | ${Array.from({ length: R.MAX_PLAYERS - R.MIN_PLAYERS + 1 }, (_, i) => `${i + R.MIN_PLAYERS} 人`).join(' | ')} |
 |---|${'---|'.repeat(R.MAX_PLAYERS - R.MIN_PLAYERS + 1)}
 ${report.join('\n')}
 `);
-console.log('wrote balanceTable.js + docs/werewolf-balance.md', combos.length, 'combos');
+  console.log('wrote balanceTable.js + docs/werewolf-balance.md');
+}
+
+// ---------------------------------------------------------- effects ---
+// For every preset × head count: keep that preset's recommended deck and flip
+// ONE setting at a time, so the lobby can show whether a setting helps the
+// good camp or the wolves.
+const optionApplies = (key, rules, n) => (key !== 'babyMeet' || R.isBabyWin(rules)) && (key !== 'jglSkill' || R.jglPossible(rules)) && (key !== 'cupid' || n >= R.CUPID_MIN);
+
+async function effectTable() {
+  const jobs = [];
+  const where = [];
+  for (const p of R.PRESETS) {
+    for (let n = Math.max(R.MIN_PLAYERS, p.min || 0); n <= R.MAX_PLAYERS; n++) {
+      const base = { ...R.DEFAULT_RULES, ...p.rules, cupid: 'no' };
+      const cfg = R.effectiveConfig(n, { auto: true, rules: base });
+      if (R.buildDeck(n, cfg).error) continue;
+      const deck = { wolves: cfg.wolves, gods: cfg.gods };
+      jobs.push({ kind: 'effect', n, ...deck, rules: base });
+      where.push([p.id, n, 'base', deck]);
+      for (const v of R.VARIANTS) {
+        for (const [val] of v.opts) {
+          if (val === base[v.key]) continue;
+          const rules = { ...base, [v.key]: val };
+          if (!optionApplies(v.key, rules, n)) continue;
+          if (R.buildDeck(n, { ...deck, rules }).error) { where.push([p.id, n, `${v.key}:${val}`, null]); continue; }
+          jobs.push({ kind: 'effect', n, ...deck, rules });
+          where.push([p.id, n, `${v.key}:${val}`]);
+        }
+      }
+    }
+  }
+  console.log(`effects: ${jobs.length} simulations × ${EFFECT_GAMES} games on ${WORKERS} workers`);
+  const out = await runAll(jobs);
+  const table = {};
+  let j = 0;
+  for (const [id, n, key, deck] of where) {
+    const row = ((table[id] ||= {})[n] ||= { opts: {} });
+    if (key === 'base') { row.base = out[j++]; row.wolves = deck.wolves; row.gods = deck.gods; } else row.opts[key] = deck === null ? null : out[j++];
+  }
+  fs.writeFileSync(new URL('../src/games/werewolf/effectTable.js', import.meta.url), `// Generated by scripts/werewolfBalance.js --effects — do not edit by hand.
+// EFFECT_TABLE[preset][players]: the preset's recommended deck (wolves/gods), its good-camp
+// win % (base), and opts["key:value"] = good-camp win % with only that one setting changed
+// (${EFFECT_GAMES} games each, ±2%); null = that setting can't be played with this deck.
+export const EFFECT_GAMES = ${EFFECT_GAMES};
+export const EFFECT_TABLE = ${JSON.stringify(table)};
+`);
+  console.log('wrote effectTable.js');
+}
+
+if (MAIN && !CHILD) {
+  if (EFFECTS) await effectTable();
+  else await tuneTable();
 }

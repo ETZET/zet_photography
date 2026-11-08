@@ -3,11 +3,11 @@ import PixelSprite, { Portrait } from '../pixel/PixelSprite';
 import RoundTable from '../avalon/RoundTable';
 import { Who, WhoList, useConfirm, Confetti } from '../avalon/ui';
 import {
-  ROLES, JGL_BLURB, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave,
+  ROLES, jglBlurb, canDouble, isJgl, activeCard, isAlive, isWolfCamp, lives, activeWolves, score, isNightWolf, isMuted, voters, canSelfSave,
   changedRules, isBaby, babies, isBabyWin, nextSpeaker, speakerNow, candidates, FORCE_AFTER_MS, cupidOf, isLover, partnerOf, thirdParty, cupidAct,
   swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct, ackLoss, settleNight, forceNight, startVote, castVote, nightfall,
   newGame, effectiveConfig,
-  electSign, electCloseSign, electQuit, electStartVote, electVote, electVoters, electCandidates, sheriffOrder, passBadge, badgePending, seerSeesWolf, seerByCamp,
+  electSign, electCloseSign, electQuit, electStartVote, electVote, electVoters, electCandidates, sheriffOrder, passBadge, badgePending, seerSeesWolf, seerByCamp, wolfAim, wolfUnpick, jglPossible, CUPID_BLURB,
 } from './wolfRules';
 
 const Title = ({ children }) => <div className="px-title">{children}</div>;
@@ -86,9 +86,14 @@ export default function Board({ room, myId, update, busy }) {
       default: return false;
     }
   };
-  const onSeat = id => (task === 'cupid'
-    ? setPair(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id].slice(-2)))
-    : setTarget(id));
+  const onSeat = id => {
+    if (task === 'cupid') { setPair(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id].slice(-2))); return; }
+    setTarget(id);
+    // wolves point in the open (to the pack): tapping again after committing changes the pick
+    if (g.step === 'night' && isNightWolf(g, myId) && (task === 'wolf' || myId in g.acts.wolves)) {
+      act(x => { if (myId in x.acts.wolves) wolfUnpick(x, myId); wolfAim(x, myId, id); });
+    }
+  };
   // lovers and 丘比特 see the hearts; everyone does at the end
   const seesLove = g.lovers && (isLover(g, myId) || cupidOf(g) === myId || g.step === 'end');
 
@@ -106,7 +111,9 @@ export default function Board({ room, myId, update, busy }) {
     else if (g.step === 'vote' && isAlive(g, id)) badge = id in g.votes ? <span key="v1" className="px-tag ok px-stamp">已投</span> : <span key="v0" className="px-tag">…</span>;
     else if (wolfView) {
       const n = wolfMates.filter(w => g.acts.wolves[w] === id).length;
+      const aimed = wolfMates.filter(w => !(w in g.acts.wolves) && g.acts.aim?.[w] === id).length;
       if (n) badge = <span key={`k${n}`} className="px-tag evil px-stamp">刀{n > 1 ? `×${n}` : ''}</span>;
+      else if (aimed) badge = <span key={`a${aimed}`} className="px-tag evil">瞄{aimed > 1 ? `×${aimed}` : ''}</span>;
     }
     const e = g.step === 'elect' ? g.elect : null;
     if (!badge && e?.phase === 'vote') badge = electCandidates(g).includes(id) ? <span className="px-tag gold">警上</span>
@@ -267,7 +274,7 @@ function StatusLine({ g, myId }) {
   const camp = isWolfCamp(g, myId);
   return (
     <span className="flex flex-wrap items-center justify-center gap-2">
-      <span className={`px-tag solid ${camp ? 'evil' : 'good'}`}>{isJgl(g, myId) ? `金刚狼${g.jglUsed ? '（技能已用）' : ''}` : camp ? '狼人阵营' : '好人阵营'}</span>
+      <span className={`px-tag solid ${camp ? 'evil' : 'good'}`}>{isJgl(g, myId) ? `金刚狼${g.rules?.jglSkill === 'no' ? '' : g.jglUsed ? '（技能已用）' : ''}` : camp ? '狼人阵营' : '好人阵营'}</span>
       <span>当前身份：<b>{ROLES[now].zh}</b></span>
     </span>
   );
@@ -291,7 +298,10 @@ function MyHand({ g, myId }) {
   const checks = g.seerLog.filter(l => l.from === myId);
   return (
     <div className="px-frame pad tight" data-testid="my-hand">
-      <div className="px-title">我的两张牌</div>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="px-title !mb-0 flex-1">我的两张牌</div>
+        <RoleHelpButton g={g} myId={myId} />
+      </div>
       <Peek testId="hand-peek">
         <div className="flex justify-center gap-4">
           {h.cards.map((c, i) => (
@@ -356,6 +366,120 @@ function BabyMates({ g, myId }) {
   );
 }
 
+// ------------------------------------------------------- role rules ---
+/** Detailed rules for the cards in my own hand, under this game's house rules. */
+function cardRules(g, card) {
+  const r = g.rules || {};
+  const seerLine = r.seer === 'campJgl' ? '验的是阵营：对方手里还有狼牌（没出局的）就显示狼人；但金刚狼验出来是好人。'
+    : r.seer === 'camp' ? '验的是阵营：对方手里还有狼牌（没出局的）就显示狼人。'
+      : '验的是对方「当前那张牌」：上面那张是狼牌才显示狼人，压在下面的狼牌验不出来。';
+  switch (card) {
+    case 'wolf': return [
+      r.wake === 'all' ? '本局狼牌不管在上面还是下面，晚上都睁眼和队友一起刀人。' : '这张狼牌翻在上面（是你当前的牌）时，晚上和队友一起睁眼刀人；压在下面时不睁眼。',
+      '每晚狼队一起刀一个人，被刀的人少一条命。你点的人队友能实时看到，所有狼确认后才出刀；意见不一致按多数，平票以座位靠前的狼为准。',
+      '守卫守住或女巫用解药可以挡住狼刀。',
+    ];
+    case 'villager': return ['没有技能。白天靠发言和投票找狼。', ...(isBabyWin(r) ? ['两张都是村民的人是「金宝宝」，狼人的胜利条件和金宝宝有关（见下面）。'] : [])];
+    case 'seer': return [
+      '每晚查验一个还在场的其他人，结果只有你自己看得到。',
+      seerLine,
+      '这张牌必须是你当前的牌（在上面，或上面那张已经出局）才能查验。',
+    ];
+    case 'witch': return [
+      '一瓶解药、一瓶毒药，整局各用一次；同一晚只能用一瓶。',
+      `每晚会告诉你狼刀了谁，你决定救不救。自救：${({ never: '不能', first: '只有第一晚能', always: '可以' })[r.selfSave] || '不能'}。`,
+      ...(jglPossible(r) && r.jglSkill !== 'no' ? ['金刚狼的一刀两命救不了。'] : []),
+      '毒药让对方少一条命；被毒的猎人不能开枪。',
+      `守卫和你救同一个人：${r.guardSave === 'lives' ? '不死' : '会死（奶穿）'}。`,
+    ];
+    case 'hunter': return [
+      '猎人这张牌被狼刀或被投票出局时，可以开枪带走一个人的一条命，也可以不开。',
+      '被女巫毒掉、或殉情时不能开枪。',
+      r.reveal === 'show' ? '本局出局亮牌，开枪会被所有人看到。' : '本局不亮牌，别人看不出你有没有枪。',
+    ];
+    case 'guard': return [
+      '每晚守护一个人不被狼刀，可以守自己。',
+      '不能连续两晚守同一个人。',
+      `守卫和女巫救同一个人：${r.guardSave === 'lives' ? '不死' : '会死（奶穿）'}。`,
+      ...(jglPossible(r) && r.jglSkill !== 'no' ? ['挡不住金刚狼的一刀两命。'] : []),
+    ];
+    case 'cupid': return [
+      '第一晚连两个人做情侣（可以连自己）。不管丘比特在上面还是下面，第一晚都会发动。',
+      '情侣一人彻底出局，另一人殉情；情侣放逐投票时不能投对方。',
+      '情侣一好一狼（人狼恋）时，情侣和你一起变成丘比特阵营：要活到场上只剩你们自己人才赢。情侣同阵营则各自照常。',
+    ];
+    default: return [];
+  }
+}
+
+function RoleHelp({ g, myId, onClose }) {
+  const h = g.hands[myId];
+  const r = g.rules || {};
+  const camp = isWolfCamp(g, myId);
+  const cards = [...new Set(h.cards)];
+  const alive = isAlive(g, myId);
+  return (
+    <div className="px-overlay" onClick={onClose} data-testid="role-help">
+      <div className="px-frame pad flex flex-col gap-3 max-w-[520px] w-full max-h-[85vh] overflow-y-auto fs-12 leading-relaxed" onClick={e => e.stopPropagation()}>
+        <div className="px-title !mb-0">我的身份细则</div>
+        <div className="c-dim">只有你自己看得到，看完点关闭。</div>
+        <section>
+          <div className="c-gold mb-1">两张牌 = 两条命</div>
+          <p>上面那张是你当前的身份，它出局后下面那张才生效。</p>
+          <p>你是<b className={camp ? 'c-evil' : 'c-good'}>{camp ? '狼人阵营' : '好人阵营'}</b>：{camp ? '手里有过狼牌就一直是狼人阵营，就算狼牌已经出局。' : '你手里没有狼牌。'}</p>
+          {alive && <p>如果现在有预言家验你，会显示<b>{seerSeesWolf(g, myId) ? '狼人' : '好人'}</b>（这只是规则说明，不代表有人验过你）。</p>}
+        </section>
+        {cards.map(c => (
+          <section key={c}>
+            <div className={`mb-1 ${ROLES[c].team === 'wolf' ? 'c-evil' : ROLES[c].god ? 'c-gold' : 'c-good'}`}>{ROLES[c].zh}</div>
+            <ul className="list-disc pl-5">{cardRules(g, c).map((t, i) => <li key={i}>{t}</li>)}</ul>
+          </section>
+        ))}
+        {isJgl(g, myId) && (
+          <section>
+            <div className="c-evil mb-1">金刚狼</div>
+            <ul className="list-disc pl-5">
+              <li>{jglBlurb(r).replace(/^金刚狼：/, '')}</li>
+              {r.jglSkill !== 'no' && <li>用法：狼刀时勾选「一刀两命」。最后狼队的刀口必须落在你选的人身上才生效，没生效不算用掉。{g.jglUsed ? '你已经用过了。' : ''}</li>}
+              {r.seer === 'campJgl' && <li>本局预言家验你，不管你掉没掉命，都显示好人。</li>}
+            </ul>
+          </section>
+        )}
+        {isBabyWin(r) && isBaby(g, myId) && (
+          <section>
+            <div className="c-gold mb-1">金宝宝</div>
+            <p>{r.win === 'babyOnly' ? '狼人只有杀光所有金宝宝才能赢（神、民全灭都不算）。' : '金宝宝全部出局，或好人的神牌全灭，狼人就赢。'}{r.babyMeet === 'no' ? '本局金宝宝互相不认识。' : '金宝宝开局互相认识。'}</p>
+          </section>
+        )}
+        {(isLover(g, myId) || cupidOf(g) === myId) && g.lovers && (
+          <section><div className="c-pink mb-1">情侣</div><p>{loveText(g, myId)?.line}</p></section>
+        )}
+        {r.sheriff === 'yes' && (
+          <section>
+            <div className="c-gold mb-1">警长{g.sheriff === myId ? '（你是警长）' : ''}</div>
+            <p>第一天天亮、公布死讯之前竞选警长。警长的票算 1.5 票；每天选从左还是从右开始发言，自己最后发言归票；彻底出局时把警徽交给一个人或撕掉。</p>
+          </section>
+        )}
+        <section>
+          <div className="c-gold mb-1">胜负</div>
+          <p>好人：所有狼牌出局{r.peace === 'three' ? '，或连续三个平安夜' : ''}就赢——看的是狼牌，不是人。</p>
+          <p>狼人：{({ city: '好人阵营全部出局。', baby: '金宝宝全部出局，或好人的神牌全灭。', babyOnly: '金宝宝全部出局（神、民全灭都不算）。' })[r.win] || '屠边：好人阵营的村民牌全灭，或神牌全灭。'}</p>
+          {r.cupid === 'yes' && <p className="c-dim">{CUPID_BLURB}</p>}
+        </section>
+        <button className="px-btn gold" onClick={onClose} data-testid="close-role-help">关闭</button>
+      </div>
+    </div>
+  );
+}
+
+function RoleHelpButton({ g, myId }) {
+  const [open, setOpen] = useState(false);
+  return <>
+    <button className="px-btn dark sm shrink-0" onClick={() => setOpen(true)} data-testid="role-help-open">身份细则</button>
+    {open && <RoleHelp g={g} myId={myId} onClose={() => setOpen(false)} />}
+  </>;
+}
+
 // ------------------------------------------------------------ panel ---
 /** Every night screen shares this shape (title, one line, one button) so a glance reveals nothing. */
 function NightPanel({ title, children, button }) {
@@ -379,7 +503,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
     case 'arrange': {
       const hasWolf = h.cards.includes('wolf');
       return <>
-        <Title>排好你的两张牌</Title>
+        <div className="flex items-center justify-between gap-2 mb-3"><div className="px-title !mb-0 flex-1">排好你的两张牌</div><RoleHelpButton g={g} myId={myId} /></div>
         <div data-testid="arrange-cards">
           <div className="flex justify-center gap-4 mb-3">
             <RoleCard role={h.cards[0]} label="上 · 先用" state="now" />
@@ -388,7 +512,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
           <p className="fs-12 mb-1 text-center">
             <span className={`px-tag solid ${hasWolf ? 'evil' : 'good'}`}>{hasWolf ? (isJgl(g, myId) ? '金刚狼' : '狼人阵营') : '好人阵营'}</span>{' '}
             {hasWolf
-              ? (isJgl(g, myId) ? JGL_BLURB + (g.rules?.seer === 'campJgl' ? '本局预言家验你会显示好人。' : '') : g.rules?.wake === 'all' ? '本局狼牌在下面也能睁眼刀人，可以把另一张放上面伪装。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。')
+              ? (isJgl(g, myId) ? jglBlurb(g.rules) + (g.rules?.seer === 'campJgl' ? '本局预言家验你会显示好人。' : '') : g.rules?.wake === 'all' ? '本局狼牌在下面也能睁眼刀人，可以把另一张放上面伪装。' : '狼牌放上面才能晚上刀人；放下面可以先装好人。')
               : '有技能的牌放上面就能先用技能。'}
           </p>
           <BabyMates g={g} myId={myId} />
@@ -426,11 +550,25 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
       if (g.step === 'night' && (task === 'wolf' || (isNightWolf(g, myId) && myId in g.acts.wolves))) {
         const mates = activeWolves(g).filter(id => id !== myId);
         const myPick = g.acts.wolves[myId];
+        const picks = activeWolves(g).map(w => g.acts.wolves[w]).filter(Boolean);
+        const split = new Set(picks).size > 1;
         return (
           <NightPanel title="狼人请睁眼" button={myPick
-            ? <NightBtn tone="red" disabled>已选 <Who id={myPick} />{g.acts.double === myId ? '（一刀两命）' : ''} · 等队友</NightBtn>
-            : <NightBtn tone="red" disabled={busy || !target} onClick={() => act(x => wolfAct(x, myId, target, { double: double && canDouble(x, myId) }))} data-testid="wolf-kill">{target ? <>{double ? '一刀两命 ' : '刀 '}<Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
+            ? <div className="grid grid-cols-2">
+                <NightBtn tone="red" disabled>已确认 <Who id={myPick} />{g.acts.double === myId ? '（两命）' : ''}</NightBtn>
+                <button className="px-btn dark lg" disabled={busy} onClick={() => act(x => wolfUnpick(x, myId))} data-testid="wolf-unpick">改刀</button>
+              </div>
+            : <NightBtn tone="red" disabled={busy || !target} onClick={() => act(x => wolfAct(x, myId, target, { double: double && canDouble(x, myId) }))} data-testid="wolf-kill">{target ? <>确认{double ? '一刀两命 ' : '刀 '}<Who id={target} /></> : '先在圆桌上点人'}</NightBtn>}>
             <div className="mb-1">狼队友：{mates.length ? <WhoList ids={mates} /> : <>只有你{g.seats.some(id => id !== myId && isWolfCamp(g, id)) ? '（其他狼牌还压在下面）' : ''}</>}</div>
+            {mates.length > 0 && (
+              <div className="mb-1" data-testid="wolf-pack">
+                {mates.map(w => (
+                  <div key={w}><Who id={w} />：{g.acts.wolves[w] ? <>确认刀 <Who id={g.acts.wolves[w]} tone="evil" /></> : g.acts.aim?.[w] ? <>瞄着 <Who id={g.acts.aim[w]} />（还没确认）</> : '还在看'}</div>
+                ))}
+                <div className="c-dim">你点的人队友马上能看到（圆桌上的「瞄」「刀」）。所有狼都确认后才出刀，之前可以改刀。</div>
+                {split && <div className="c-evil">现在意见不一致：按多数，平票以座位靠前的狼为准。</div>}
+              </div>
+            )}
             {g.acts.double && g.acts.double !== myId && <div className="mb-1">金刚狼 <Who id={g.acts.double} /> 要对 <Who id={g.acts.wolves[g.acts.double]} /> 用一刀两命。</div>}
             {canDouble(g, myId) && !myPick && (
               <label className="flex items-center gap-2 mb-1" data-testid="jgl-toggle">
@@ -438,7 +576,6 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
                 <span>金刚狼一刀两命（整局一次，守卫和解药挡不住）</span>
               </label>
             )}
-            <div className="c-dim">意见不同按多数，平票以座位靠前的狼为准。</div>
           </NightPanel>
         );
       }
@@ -738,7 +875,7 @@ function ElectPanel({ g, myId, isHost, act, busy, target, now }) {
     const mine = e.sign[myId];
     return <>
       <Title>{title}</Title>
-      <p className="fs-12 mb-3">警长的票算 1.5 票，每天决定从哪边开始发言、自己最后发言归票。想当警长就上警；上警的人不能投票。大家都选完才公布谁上警。</p>
+      <p className="fs-12 mb-3">天亮了，先竞选警长，选完再公布昨晚的死讯。警长的票算 1.5 票，每天决定从哪边开始发言、自己最后发言归票。想当警长就上警；上警的人不能投票。大家都选完才公布谁上警。</p>
       {!alive ? <p>你已出局，不能上警。</p> : <>
         {myId in e.sign && <p className="mb-2 text-center">你选了：<b>{mine ? '上警' : '不上警'}</b>（大家选完前可以改）</p>}
         <div className="grid grid-cols-2">

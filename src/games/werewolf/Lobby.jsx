@@ -8,9 +8,10 @@ import { Who, useConfirm } from '../avalon/ui';
 import {
   ROLES, ROLE_BLURB, GODS, MIN_PLAYERS, MAX_PLAYERS, RECOMMENDED, buildDeck, effectiveConfig, newGame,
   VARIANTS, DEFAULT_RULES, changedRules, balanceFor, PRESETS, presetRules, presetOf, CUPID_MIN, CUPID_BLURB,
-  isBabyWin, jglPossible, JGL_BLURB,
+  isBabyWin, jglPossible, jglBlurb,
 } from './wolfRules';
 import { addBot } from './bots';
+import { EFFECT_TABLE, EFFECT_GAMES } from './effectTable';
 import PlanPicker, { previewCount, planMismatch } from '../room/PlanPicker';
 
 const IS_DEV = import.meta.env.DEV;
@@ -40,6 +41,8 @@ export default function Lobby({ room, myId, update, busy }) {
   const [copied, setCopied] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const preset = presetOf(room.config);
+  // the board a DIY edit started from: setting win rates are measured against it
+  const base = basePreset(room.config);
   const [diy, setDiy] = useState(preset === 'custom');
   // the 丘比特 mode sits on top of whichever board is picked
   const withMode = rules => ({ ...rules, cupid: cfg.rules.cupid || 'no' });
@@ -52,7 +55,7 @@ export default function Lobby({ room, myId, update, busy }) {
   };
   const custom = fn => isHost && update(r => {
     const cur = effectiveConfig(tableN, r.config);
-    r.config = { ...r.config, preset: 'custom', rules: cur.rules, wolves: cur.wolves, gods: [...cur.gods], auto: false };
+    r.config = { ...r.config, base: basePreset(r.config), preset: 'custom', rules: cur.rules, wolves: cur.wolves, gods: [...cur.gods], auto: false };
     fn(r.config);
     return r;
   });
@@ -198,7 +201,7 @@ export default function Lobby({ room, myId, update, busy }) {
           {showRules && <RuleCard tableN={tableN} rules={cfg.rules} />}
         </div>
 
-        <CupidMode rules={cfg.rules} n={tableN} isHost={isHost} update={update} />
+        <CupidMode rules={cfg.rules} n={tableN} isHost={isHost} update={update} base={base} />
 
         <div className="px-frame pad" data-testid="diy">
           <button className="w-full flex items-center justify-between text-left" onClick={() => setDiy(v => !v)} aria-expanded={diy} data-testid="toggle-diy">
@@ -230,7 +233,7 @@ export default function Lobby({ room, myId, update, busy }) {
               })}
             </div>
             <div className="px-divider" />
-            <VariantPanel rules={cfg.rules} isHost={isHost} update={update} />
+            <VariantPanel rules={cfg.rules} isHost={isHost} update={update} n={tableN} base={base} />
             <BalanceBar bal={bal} auto={cfg.auto} />
           </div>}
         </div>
@@ -261,10 +264,10 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
         baby: `金宝宝（两张都是村民的人，${rules.babyMeet === 'no' ? '开局不互认' : '开局互相认识'}）全部出局，或好人的神牌全灭。`,
         babyOnly: `只看金宝宝（两张都是村民的人，每局 1–3 个，${rules.babyMeet === 'no' ? '开局不互认' : '开局互相认识'}）：金宝宝全部出局才赢，神、民全灭都不算。`,
       })[rules.win] || '屠边，好人阵营的村民牌全灭，或神牌全灭。'}</p>
-      {jglPossible(rules) && <p><span className="c-evil">金刚狼：</span>{({ maybe: '发牌时可能有人拿到两张狼牌。', force: '保证有一人拿两张狼牌。', half: '一半的局有一人拿两张狼牌，没人知道这局有没有。' })[rules.doubleWolf]}{JGL_BLURB.replace(/^金刚狼：/, '')}</p>}
+      {jglPossible(rules) && <p><span className="c-evil">金刚狼：</span>{({ maybe: '发牌时可能有人拿到两张狼牌。', force: '保证有一人拿两张狼牌。', half: '一半的局有一人拿两张狼牌，没人知道这局有没有。' })[rules.doubleWolf]}{jglBlurb(rules).replace(/^金刚狼：/, '')}</p>}
       {rules.cupid === 'yes' && <p><span className="c-pink">丘比特模式：</span>第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情，放逐投票时情侣不能投对方。情侣同阵营就照常；人狼恋的情侣和丘比特变成丘比特阵营，活到只剩自己人才赢，好人和狼人都要先除掉这对情侣才能赢；情侣殉情后丘比特不回好人阵营。</p>}
       <p className="c-dim">
-        {rules.sheriff === 'yes' ? '第一天先竞选警长（警上发言、可退水，警下投票，平票 PK 一次），警长的票算 1.5 票、每天选警左或警右发言、最后发言归票，出局时移交或撕警徽；' : '没有警长，发言顺序由手机决定；'}{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
+        {rules.sheriff === 'yes' ? '第一天天亮、公布死讯之前先竞选警长（昨晚被刀的人也能上警；警上发言、可退水，警下投票，平票 PK 一次），警长的票算 1.5 票、每天选警左或警右发言、最后发言归票，出局时移交或撕警徽；' : '没有警长，发言顺序由手机决定；'}{rules.pk === 'yes' ? '平票的人 PK 再投一次' : '平票无人出局'}；女巫{({ never: '不能自救', first: '只有首夜能自救', always: '可以自救' })[rules.selfSave]}、一晚只能用一瓶；
         守卫不能连守，同守同救{rules.guardSave === 'dies' ? '会死' : '不死'}{rules.mute === 'yes' ? '；夜里失去第一条命的人当天不能投票' : ''}。
       </p>
       <table className="w-full border-collapse mt-1">
@@ -288,7 +291,9 @@ export function RuleCard({ tableN, rules = DEFAULT_RULES }) {
 }
 
 /** 丘比特模式: a special mode with its own big card, like Avalon's 湖中仙女. */
-function CupidMode({ rules, n, isHost, update }) {
+function CupidMode({ rules, n, isHost, update, base }) {
+  const eff = EFFECT_TABLE[base]?.[n];
+  const withCupid = eff?.opts['cupid:yes'];
   const on = rules.cupid === 'yes';
   const tooFew = n < CUPID_MIN;
   const toggle = () => isHost && update(r => {
@@ -307,6 +312,7 @@ function CupidMode({ rules, n, isHost, update }) {
         </div>
       </div>
       <p className="fs-12 c-dim mt-3">{CUPID_BLURB}</p>
+      {withCupid != null && <p className="fs-12 mt-2" data-testid="cupid-effect">模拟：{PRESETS.find(p => p.id === base)?.zh} · {n} 人推荐牌组，开启后好人胜率 {eff.base}% → <EffectPct v={withCupid} base={eff.base} /></p>}
       {isHost && (
         <button className={`px-btn ${on ? 'dark' : 'pink'} block mt-3`} onClick={toggle} disabled={!on && tooFew} aria-pressed={on} data-testid="toggle-cupid">
           {on ? '关闭丘比特模式' : tooFew ? `还差 ${CUPID_MIN - n} 人` : '开启丘比特模式'}
@@ -316,9 +322,28 @@ function CupidMode({ rules, n, isHost, update }) {
   );
 }
 
-function VariantPanel({ rules, isHost, update }) {
+/** The preset a config came from (a DIY edit remembers it). */
+export function basePreset(cfg = {}) {
+  if (cfg.base) return cfg.base;
+  const p = presetOf(cfg);
+  return p === 'custom' ? 'standard' : p;
+}
+
+/** A simulated good-camp win %, coloured by which side the change helps (±2 is noise). */
+function EffectPct({ v, base }) {
+  if (v == null) return <span className="c-mute">不能配</span>;
+  const d = Math.round(v - base);
+  const cls = d >= 3 ? 'c-good' : d <= -3 ? 'c-evil' : 'c-dim';
+  return <span className={cls}>{Math.round(v)}%{Math.abs(d) >= 3 ? (d > 0 ? `（偏好人 +${d}）` : `（偏狼 ${d}）`) : ''}</span>;
+}
+
+function VariantPanel({ rules, isHost, update, n, base }) {
   const changed = changedRules({ ...rules, cupid: 'no' }).length; // the 丘比特 mode has its own card
-  const set = (key, val) => isHost && update(r => { r.config = { ...r.config, preset: 'custom', rules: { ...DEFAULT_RULES, ...(r.config.rules || {}), [key]: val } }; delete r.config.order; return r; });
+  const set = (key, val) => isHost && update(r => { r.config = { ...r.config, base: basePreset(r.config), preset: 'custom', rules: { ...DEFAULT_RULES, ...(r.config.rules || {}), [key]: val } }; delete r.config.order; return r; });
+  const eff = EFFECT_TABLE[base]?.[n];
+  const baseRules = presetRules(base);
+  const baseName = PRESETS.find(p => p.id === base)?.zh;
+  const pct = (key, val) => (val === baseRules[key] ? eff.base : eff.opts[`${key}:${val}`]);
   return (
     <div data-testid="variants">
       <div className="flex items-center justify-between mb-3">
@@ -328,8 +353,13 @@ function VariantPanel({ rules, isHost, update }) {
           : <span className="px-tag">★ 常用规则</span>}
       </div>
       <p className="fs-12 c-dim mb-3">双身份玩法各地不一样，{isHost ? '开局前和大家商量好再选。' : '由房主设置。'}</p>
+      {eff ? (
+        <p className="fs-12 mb-3" data-testid="effect-note">
+          每个选项下面的百分比：用「{baseName}」{n} 人的推荐牌组（狼牌 {eff.wolves} 张 + {eff.gods.map(id => ROLES[id].zh).join('')}），只改这一项时的好人胜率，基准 {eff.base}%。比基准高是帮好人，低是帮狼。离线模拟每项 {EFFECT_GAMES} 局，差 2% 以内算误差；同时改好几项时效果会叠加，不一定等于单项相加。
+        </p>
+      ) : <p className="fs-12 c-mute mb-3">{n} 人没有这个板子的单项模拟。</p>}
       <div className="flex flex-col gap-3">
-        {VARIANTS.filter(v => !v.mode && (v.key !== 'babyMeet' || isBabyWin(rules))).map(v => {
+        {VARIANTS.filter(v => !v.mode && (v.key !== 'babyMeet' || isBabyWin(rules)) && (v.key !== 'jglSkill' || jglPossible(rules))).map(v => {
           const cur = v.opts.find(o => o[0] === rules[v.key]) || v.opts[0];
           return (
             <div key={v.key}>
@@ -343,6 +373,13 @@ function VariantPanel({ rules, isHost, update }) {
                 ))}
               </div>
               {cur[2] && <div className="fs-12 c-dim mt-1">{cur[2]}</div>}
+              {eff && (
+                <div className="fs-12 mt-1 flex flex-wrap gap-x-3" data-testid={`effect-${v.key}`}>
+                  {v.opts.filter(([val]) => val === baseRules[v.key] || `${v.key}:${val}` in eff.opts).map(([val, label]) => (
+                    <span key={val} className="whitespace-nowrap">{label}{val === baseRules[v.key] ? '（板子）' : ''} <EffectPct v={pct(v.key, val)} base={eff.base} /></span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

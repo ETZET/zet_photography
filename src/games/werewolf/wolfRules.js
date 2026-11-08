@@ -37,6 +37,8 @@ export const VILLAGE_MIN = 8;
 export const BABY_RANGE = [1, 3];
 export const CUPID_BLURB = '加入一张丘比特牌（拿到丘比特的人一定是好人阵营）。第一晚丘比特连两个人做情侣（可以连自己），一人出局另一人殉情，情侣放逐投票时不能投对方。人狼恋的情侣和丘比特变成丘比特阵营：活到只剩自己人才赢；情侣殉情后丘比特也不回好人阵营。';
 export const JGL_BLURB = '金刚狼：两张牌都是狼。整局一次，可以一刀砍掉一个人的两条命，守卫和女巫的解药都挡不住。有一张狼牌出局后就不能再用。';
+export const JGL_BLURB_NOSKILL = '金刚狼：两张牌都是狼，两条命都是狼人。本局金刚狼没有一刀两命的技能，刀人和普通狼一样。';
+export const jglBlurb = rules => (rules?.jglSkill === 'no' ? JGL_BLURB_NOSKILL : JGL_BLURB);
 
 export const ROLE_BLURB = {
   wolf: '这张牌在上面时，每晚和狼队友一起刀掉一个人的一条命。手里只要有一张狼牌，你就是狼人阵营。',
@@ -66,6 +68,7 @@ export const VARIANTS = [
   { key: 'wake', zh: '夜里睁眼的狼', opts: [['top', '只有上面的狼牌', '狼牌压在下面时，第一条命没了才睁眼'], ['all', '所有狼牌', '狼牌在下面也睁眼刀人（隐狼）']] },
   { key: 'seer', zh: '预言家验到', opts: [['card', '当前那张牌', '对方上面那张牌是好是狼'], ['camp', '阵营', '对方手里还有狼牌就显示狼人'], ['campJgl', '阵营（金刚狼验成好人）', '手里有狼牌就显示狼人，但金刚狼验出来是好人', true]] },
   { key: 'doubleWolf', zh: '金刚狼（一人两张狼牌）', opts: [['no', '不会发到', '狼牌分散给不同的人'], ['maybe', '随机', '可能发到；拿到的人有金刚狼技能'], ['force', '必有一个', '保证有一人拿两张狼牌'], ['half', '一半机会', '一半的局有一人拿两张狼牌，大家不知道这局有没有', true]] },
+  { key: 'jglSkill', zh: '金刚狼技能', opts: [['yes', '一刀两命', '整局一次，一刀砍掉一个人的两条命，守卫和解药挡不住'], ['no', '没有技能', '金刚狼只是拿了两张狼牌的狼，刀人和普通狼一样']] },
   { key: 'selfSave', zh: '女巫自救', opts: [['never', '不能', ''], ['first', '仅首夜', ''], ['always', '可以', '']] },
   { key: 'guardSave', zh: '同守同救', opts: [['dies', '会死', '守卫和女巫救同一人，奶穿'], ['lives', '不死', '']] },
   { key: 'reveal', zh: '失去一条命时', opts: [['hide', '不亮牌', '只公布少了一条命'], ['show', '亮出那张牌', '所有人看到出局的是什么身份']] },
@@ -74,7 +77,7 @@ export const VARIANTS = [
   { key: 'babyMeet', zh: '金宝宝开局', opts: [['yes', '互相认识', '金宝宝看得到其他金宝宝是谁'], ['no', '不互认', '只知道自己是金宝宝']] },
   { key: 'cupid', mode: true, zh: '丘比特模式', opts: [['no', '关闭', ''], ['yes', '开启', CUPID_BLURB]] },
   { key: 'pk', zh: '平票', opts: [['no', '无人出局', ''], ['yes', 'PK 再投', '平票的人再各说一轮，其他人再投一次；再平票无人出局']] },
-  { key: 'sheriff', zh: '警长', opts: [['no', '没有警长', '手机决定发言顺序'], ['yes', '第一天竞选', '第一天白天先竞选警长：警长的票算 1.5 票，每天决定从左还是从右开始发言、自己最后发言归票；出局时移交或撕掉警徽']] },
+  { key: 'sheriff', zh: '警长', opts: [['no', '没有警长', '手机决定发言顺序'], ['yes', '第一天竞选', '第一天天亮、公布死讯之前先竞选警长：警长的票算 1.5 票，每天决定从左还是从右开始发言、自己最后发言归票；出局时移交或撕掉警徽']] },
   { key: 'peace', zh: '连续平安夜', opts: [['no', '不算', ''], ['three', '三晚好人胜', '连续三个晚上没有人失去命，好人直接获胜']] },
 ];
 export const DEFAULT_RULES = Object.fromEntries(VARIANTS.map(v => [v.key, v.opts[0][0]]));
@@ -106,12 +109,15 @@ export function presetOf(cfg = {}) {
 // House rules that shift balance a lot; the recommended deck is pre-tuned for each combination.
 export const TUNED_KEYS = ['order', 'wake', 'doubleWolf', 'mute', 'win'];
 export const tableKey = rules => TUNED_KEYS.map(k => rules[k]).join('|') + (rules.cupid === 'yes' ? '|cupid' : '')
-  + (rules.seer === 'campJgl' ? '|sj' : '') + (rules.babyMeet === 'no' ? '|nb' : '') + (rules.peace === 'three' && rules.win === 'babyOnly' ? '|p3' : '');
+  + (rules.seer === 'campJgl' ? '|sj' : '') + (rules.babyMeet === 'no' ? '|nb' : '') + (rules.peace === 'three' && rules.win === 'babyOnly' ? '|p3' : '')
+  + (rules.sheriff === 'yes' ? '|sh' : '');
 export const isBabyWin = rules => rules?.win === 'baby' || rules?.win === 'babyOnly';
 /** 金刚狼 can be dealt (one player with two wolf cards). */
 export const jglPossible = rules => ['maybe', 'force', 'half'].includes(rules?.doubleWolf);
 /** Pre-computed recommendation + simulated good win rate, or null. */
-export const balanceFor = (n, rules) => BALANCE_TABLE?.[tableKey(rules)]?.[n] || null;
+export const balanceFor = (n, rules) => BALANCE_TABLE?.[tableKey(rules)]?.[n]
+  // the 警长 is only tuned for the boards that ship with it; elsewhere use the board without it
+  || BALANCE_TABLE?.[tableKey({ ...rules, sheriff: 'no' })]?.[n] || null;
 
 const clampN = n => Math.min(Math.max(n, MIN_PLAYERS), MAX_PLAYERS);
 export const defaultConfig = () => ({ auto: true, rules: { ...DEFAULT_RULES } });
@@ -174,7 +180,9 @@ export function newGame(players, cfg) {
   const dead = {};
   seats.forEach((id, i) => {
     const pair = [cards[2 * i], cards[2 * i + 1]];
-    // random order mode: deal as-is; choose mode: wolves default to wolf on top
+    // random order mode: deal as-is; choose mode: 丘比特 starts underneath (it fires from
+    // either position, so on top it would only waste the first life)
+    if (rules.order !== 'random' && pair[0] === 'cupid') pair.reverse();
     hands[id] = { cards: pair, locked: rules.order === 'random' };
     dead[id] = 0;
   });
@@ -221,7 +229,7 @@ export const activeWolves = g => g.seats.filter(id => isNightWolf(g, id));
 export const isMuted = (g, id) => R(g).mute === 'yes' && g.step === 'vote' && (g.muted || []).includes(id);
 /** 金刚狼: holds two wolf cards, both still alive, skill unused, awake tonight. */
 export const isJgl = (g, id) => g.hands[id].cards.every(c => c === 'wolf');
-export const canDouble = (g, id) => isJgl(g, id) && g.dead[id] === 0 && !g.jglUsed && isNightWolf(g, id);
+export const canDouble = (g, id) => R(g).jglSkill !== 'no' && isJgl(g, id) && g.dead[id] === 0 && !g.jglUsed && isNightWolf(g, id);
 /** 金宝宝: both cards are villagers. They know each other from the start (金宝宝 variant). */
 export const isBaby = (g, id) => g.hands[id].cards.every(c => c === 'villager');
 export const babies = g => g.seats.filter(id => isBaby(g, id));
@@ -284,7 +292,7 @@ const jitter = (lo, hi) => lo + Math.random() * (hi - lo);
 function startNight(g, now = Date.now()) {
   g.night += 1;
   g.step = 'night';
-  g.acts = { guard: null, wolves: {}, seer: null, kill: null, save: false, poison: null, witchDone: false, double: null, doubleKill: false, forced: false };
+  g.acts = { guard: null, wolves: {}, aim: {}, seer: null, kill: null, save: false, poison: null, witchDone: false, double: null, doubleKill: false, forced: false };
   g.nightStart = now;
   g.settleAt = null;
   g.votes = {};
@@ -331,6 +339,12 @@ function advanceNight(g, now = Date.now()) {
 /** Host's phone: dawn once the witch is done and the minimum night length has passed. */
 export function settleNight(g, now = Date.now()) {
   if (g.step !== 'witch' || !g.acts.witchDone || g.settleAt == null || now < g.settleAt) return false;
+  // 警长 variant: day 1 opens with the election, before last night's deaths are announced
+  if (R(g).sheriff === 'yes' && !g.elected && g.night === 1) {
+    g.day = g.night;
+    enterElection(g, now);
+    return true;
+  }
   resolveNight(g, now);
   return true;
 }
@@ -376,6 +390,20 @@ export function wolfAct(g, id, target, { double = false } = {}) {
 }
 
 /** What a seer check on `id` would show right now (true = 狼人). */
+/** A wolf points at someone before committing; the pack sees every wolf's pointer live. */
+export function wolfAim(g, id, target) {
+  must(g.step === 'night' && isNightWolf(g, id), '现在不能刀人');
+  must(target === null || isAlive(g, target), '他已经出局了');
+  (g.acts.aim ||= {})[id] = target;
+}
+
+/** Take back a committed pick while teammates are still deciding. */
+export function wolfUnpick(g, id) {
+  must(g.step === 'night' && isNightWolf(g, id) && id in g.acts.wolves, '现在不能改');
+  delete g.acts.wolves[id];
+  if (g.acts.double === id) g.acts.double = null;
+}
+
 export function seerSeesWolf(g, id) {
   const sr = R(g).seer;
   if (sr === 'camp') return hasLiveWolf(g, id);
@@ -475,8 +503,7 @@ function afterLoss(g, then) {
 }
 
 function proceed(g, then) {
-  if (then === 'day' && R(g).sheriff === 'yes' && !g.elected) enterElection(g);
-  else if (then === 'day') enterDay(g);
+  if (then === 'day') enterDay(g);
   else if (then === 'dusk') enterDusk(g);
   else enterDay(g);
 }
@@ -626,7 +653,8 @@ export function castVote(g, id, target) {
 }
 
 // -------------------------------------------------------------- sheriff ---
-// 警长 variant. Day 1, after dawn: everyone alive says 上警 or not; the
+// 警长 variant. Day 1, at dawn but before last night's deaths are announced:
+// everyone alive says 上警 or not (last night's victims too, as in a real game); the
 // candidates speak (any of them may 退水 before the vote); everyone who never
 // ran votes. A tie gets one PK round (the tied speak again, same voters);
 // a second tie, nobody running or nobody left to vote = 警徽流失.
@@ -651,7 +679,7 @@ function endElection(g, to, extra = {}) {
   g.log.push({ type: 'sheriff', day: g.day, to: to || null, ...extra });
   g.elect = null;
   g.elected = true;
-  enterDay(g);
+  resolveNight(g); // now announce last night: the new 警长 may have died and pass the badge
 }
 
 function electSpeeches(g, ids, now) {
