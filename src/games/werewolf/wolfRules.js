@@ -173,8 +173,9 @@ export function newGame(players, cfg) {
     const babyN = seats.filter((_, i) => cards[2 * i] === 'villager' && cards[2 * i + 1] === 'villager').length;
     const babyOk = !isBabyWin(rules) || (rules.win === 'babyOnly' ? babyN >= BABY_RANGE[0] && babyN <= BABY_RANGE[1] : babyN > 0);
     // 丘比特 is always a good-camp card: never dealt next to a wolf card
-    const cupidOk = seats.every((_, i) => !(cards[2 * i] === 'cupid' && cards[2 * i + 1] === 'wolf') && !(cards[2 * i] === 'wolf' && cards[2 * i + 1] === 'cupid'));
-    if (goodPlayers.length >= 2 && dealOk && babyOk && cupidOk) break;
+    // 丘比特 is always a good-camp card, and a 预言家 never checks for its own wolf: neither is dealt next to a wolf card
+    const pairOk = seats.every((_, i) => { const h = [cards[2 * i], cards[2 * i + 1]]; return !h.includes('wolf') || !(h.includes('cupid') || h.includes('seer')); });
+    if (goodPlayers.length >= 2 && dealOk && babyOk && pairOk) break;
   }
   const hands = {};
   const dead = {};

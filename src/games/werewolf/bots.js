@@ -1,7 +1,7 @@
 // Dev-only bots so one person can play through locally. Host tab drives them.
 import { useEffect } from 'react';
 import {
-  MAX_PLAYERS, activeCard, alivePlayers, isWolfCamp, isNightWolf, voters, canSelfSave, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
+  MAX_PLAYERS, activeCard, activeWolves, isAlive, alivePlayers, isWolfCamp, isNightWolf, voters, canSelfSave, swapCards, lockCards, guardAct, wolfAct, seerAct, witchAct,
   ackLoss, castVote, candidates, speakerNow, nextSpeaker, cupidOf, cupidAct, partnerOf,
   electSign, electVote, electVoters, electCandidates, sheriffOrder, passBadge, badgePending,
 } from './wolfRules';
@@ -42,6 +42,12 @@ export function botStep(room) {
         cupidAct(g, cu, a, b2);
         return true;
       }
+      // a bot wolf goes along with the pack: a human teammate's pick (or aim) wins
+      const pack = activeWolves(g);
+      const lead = pack.filter(w => !isBot(w)).map(w => g.acts.wolves[w] || g.acts.aim?.[w]).find(Boolean)
+        || pack.map(w => g.acts.wolves[w]).find(Boolean);
+      const follow = pack.find(id => isBot(id) && id in g.acts.wolves && lead && g.acts.wolves[id] !== lead && isAlive(g, lead));
+      if (follow) { wolfAct(g, follow, lead); return true; }
       const b = g.seats.find(id => isBot(id) && (
         (role(id) === 'guard' && !g.acts.guard) || (isNightWolf(g, id) && !(id in g.acts.wolves)) || (role(id) === 'seer' && !g.acts.seer)));
       if (!b) return false;
@@ -49,7 +55,7 @@ export function botStep(room) {
       else if (role(b) === 'seer' && !g.acts.seer) seerAct(g, b, pick(others(b)));
       else {
         const prey = alivePlayers(g).filter(x => !isWolfCamp(g, x));
-        wolfAct(g, b, pick(prey.length ? prey : others(b)));
+        wolfAct(g, b, lead && isAlive(g, lead) ? lead : pick(prey.length ? prey : others(b)));
       }
       return true;
     }

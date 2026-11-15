@@ -190,7 +190,7 @@ test('警长: a game on the phone', async ({ browser }) => {
   await ctx.close();
 });
 
-test('丘比特 is never dealt with a wolf card', async ({ page }) => {
+test('丘比特 / 预言家 are never dealt with a wolf card', async ({ page }) => {
   await page.goto('/game/werewolf?local=1');
   const bad = await page.evaluate(async () => {
     const R = await import('/src/games/werewolf/wolfRules.js');
@@ -201,10 +201,36 @@ test('丘比特 is never dealt with a wolf card', async ({ page }) => {
       const g = R.newGame(players, { ...R.effectiveConfig(size, { auto: true, rules }), rules });
       const c = R.cupidOf(g);
       if (c && g.hands[c].cards.includes('wolf')) n++;
+      if (g.seats.some(id => g.hands[id].cards.includes('seer') && g.hands[id].cards.includes('wolf'))) n++;
+    }
+    for (const preset of R.PRESETS) for (const size of [6, 8, 10, 12]) for (let i = 0; i < 40; i++) {
+      const cfg = R.effectiveConfig(size, { auto: true, rules: { ...R.DEFAULT_RULES, ...preset.rules } });
+      const players = Array.from({ length: size }, (_, k) => ({ id: `p${k}` }));
+      let g; try { g = R.newGame(players, cfg); } catch { continue; }
+      if (g.seats.some(id => g.hands[id].cards.includes('seer') && g.hands[id].cards.includes('wolf'))) n++;
     }
     return n;
   });
   expect(bad).toBe(0);
+});
+
+test('split wolves: majority, ties to the lower seat', async ({ page }) => {
+  await page.goto('/game/werewolf?local=1');
+  const res = await page.evaluate(async () => {
+    const R = await import('/src/games/werewolf/wolfRules.js');
+    const players = 'abcdef'.split('').map(id => ({ id }));
+    const rules = { ...R.DEFAULT_RULES, order: 'choose' };
+    const g = R.newGame(players, { ...R.effectiveConfig(6, { auto: true, rules }), rules });
+    const hands = [['wolf', 'villager'], ['wolf', 'villager'], ['seer', 'villager'], ['witch', 'villager'], ['hunter', 'villager'], ['guard', 'villager']];
+    g.seats.forEach((id, i) => { g.hands[id] = { cards: hands[i], locked: false }; R.lockCards(g, id); });
+    R.guardAct(g, 'f', 'f'); R.seerAct(g, 'c', 'a');
+    R.wolfAct(g, 'a', 'c');
+    const out = { waiting: R.nightPending(g).join('') };
+    R.wolfAct(g, 'b', 'd');
+    out.step = g.step; out.kill = g.acts.kill;
+    return out;
+  });
+  expect(res).toEqual({ waiting: 'b', step: 'witch', kill: 'c' });
 });
 
 test('金刚狼技能 can be switched off in DIY', async ({ browser }) => {

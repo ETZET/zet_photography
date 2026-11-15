@@ -387,7 +387,7 @@ function cardRules(g, card) {
     ];
     case 'witch': return [
       '一瓶解药、一瓶毒药，整局各用一次；同一晚只能用一瓶。',
-      `每晚会告诉你狼刀了谁，你决定救不救。自救：${({ never: '不能', first: '只有第一晚能', always: '可以' })[r.selfSave] || '不能'}。`,
+      `解药还在时，每晚会告诉你狼刀了谁，你决定救不救；解药用掉以后就看不到刀口了。自救：${({ never: '不能', first: '只有第一晚能', always: '可以' })[r.selfSave] || '不能'}。`,
       ...(jglPossible(r) && r.jglSkill !== 'no' ? ['金刚狼的一刀两命救不了。'] : []),
       '毒药让对方少一条命；被毒的猎人不能开枪。',
       `守卫和你救同一个人：${r.guardSave === 'lives' ? '不死' : '会死（奶穿）'}。`,
@@ -566,7 +566,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
                   <div key={w}><Who id={w} />：{g.acts.wolves[w] ? <>确认刀 <Who id={g.acts.wolves[w]} tone="evil" /></> : g.acts.aim?.[w] ? <>瞄着 <Who id={g.acts.aim[w]} />（还没确认）</> : '还在看'}</div>
                 ))}
                 <div className="c-dim">你点的人队友马上能看到（圆桌上的「瞄」「刀」）。所有狼都确认后才出刀，之前可以改刀。</div>
-                {split && <div className="c-evil">现在意见不一致：按多数，平票以座位靠前的狼为准。</div>}
+                {split && <div className="c-evil" data-testid="wolf-split">现在意见不一致：全部确认后按多数，平票以座位靠前的狼为准。</div>}
               </div>
             )}
             {g.acts.double && g.acts.double !== myId && <div className="mb-1">金刚狼 <Who id={g.acts.double} /> 要对 <Who id={g.acts.wolves[g.acts.double]} /> 用一刀两命。</div>}
@@ -599,7 +599,7 @@ function ActionPanel({ g, myId, mine, isHost, act, update, busy, target, setTarg
             </div>
             <button className="px-btn dark block mt-2" disabled={busy} onClick={() => act(x => witchAct(x, myId, {}))} data-testid="witch-skip">今晚不用药</button>
           </>}>
-            {kill ? <>今晚 <Who id={kill} /> 被{g.acts.doubleKill ? '金刚狼一刀砍两条命，解药救不了' : '狼刀了'}。</> : '今晚狼人没有刀人。'}
+            {!g.potions.save ? '解药已经用过，看不到今晚的刀口。' : kill ? <>今晚 <Who id={kill} /> 被{g.acts.doubleKill ? '金刚狼一刀砍两条命，解药救不了' : '狼刀了'}。</> : '今晚狼人没有刀人。'}
             {kill === myId && g.potions.save && !canSelfSave(g) && <> {g.rules?.selfSave === 'first' ? '女巫只有第一晚能自救。' : '女巫不能自救。'}</>}
           </NightPanel>
         );
