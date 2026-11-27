@@ -6,6 +6,7 @@ import { Who, useConfirm, Confetti } from '../avalon/ui';
 import { navigate } from '../../route';
 import { keepHostFirst } from '../room/seats';
 import { useImmersive, fullscreenTip } from '../room/immersive';
+import DealFx from '../cards/DealFx';
 import { CardBack, CardRow, HandPicker } from '../cards/PlayingCard';
 import {
   SUITS, rankOf, suitOf, isJoker, isWild, isRed, cardLv, rankName, levelName, comboLabel, isBomb, TYPE_ZH,
@@ -50,17 +51,7 @@ function useLandscape() {
   return !portrait;
 }
 
-function useNow(active, ms = 250) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!active) return undefined;
-    const t = setInterval(() => setNow(Date.now()), ms);
-    return () => clearInterval(t);
-  }, [active, ms]);
-  return now;
-}
-
-const INTRO_MS = 1600;
+const INTRO_MS = 4000; // a hand dealt this recently still gets the deal effect
 
 export default function Board({ room, myId, update, busy }) {
   const g = room.game;
@@ -73,8 +64,10 @@ export default function Board({ room, myId, update, busy }) {
   const [choice, setChoice] = useState(null);
   const [panel, setPanel] = useState(null); // 'log' | 'menu'
   const [msg, setMsg] = useState('');
-  const now = useNow(Date.now() - (g.dealtAt || 0) < INTRO_MS + 500);
-  const intro = now - (g.dealtAt || 0) < INTRO_MS;
+  // deal effect for every hand, if I'm here when it's dealt (a reload mid-hand skips it)
+  const [fxAt, setFxAt] = useState(null);
+  useEffect(() => { if (g.dealtAt && Date.now() - g.dealtAt < INTRO_MS) setFxAt(g.dealtAt); }, [g.dealtAt]);
+  const intro = fxAt != null && fxAt === g.dealtAt;
   const hand = useMemo(() => (me >= 0 ? g.hands[me] : []), [g.hands, me]);
   const columns = useMemo(() => columnsOf(hand, g.level), [hand, g.level]);
 
@@ -190,7 +183,7 @@ export default function Board({ room, myId, update, busy }) {
         </div>
       </div>
 
-      {intro && <DealIntro g={g} myTeam={myTeam} />}
+      {intro && <DealIntro g={g} myId={myId} myTeam={myTeam} onDone={() => setFxAt(null)} />}
       {g.step === 'hand' && <HandResult g={g} myTeam={myTeam} busy={busy} onNext={() => act(x => nextHand(x))} />}
       {g.step === 'end' && <GameOver g={g} room={room} myId={myId} myTeam={myTeam} update={update} />}
       {panel === 'log' && <LogPanel g={g} onClose={() => setPanel(null)} />}
@@ -279,15 +272,10 @@ export function RotatePrompt() {
   );
 }
 
-function DealIntro({ g, myTeam }) {
+function DealIntro({ g, myId, myTeam, onDone }) {
   const mine = g.declarer == null ? null : g.declarer === myTeam;
-  return (
-    <div className="gd-intro" data-testid="deal-intro">
-      <div className="gd-deal">{[0, 1, 2, 3, 4, 5].map(i => <span key={i} style={{ animationDelay: `${i * 0.12}s` }}><CardBack w={30} /></span>)}</div>
-      <div className="fs-24 c-gold shadow-px mt-3">第 {g.handNo} 局 · 打 {levelName(g.level)}</div>
-      <div className="fs-12 c-dim mt-1">{mine == null ? '发牌中…' : mine ? '我方的级，我方坐庄' : '对方的级，对方坐庄'}</div>
-    </div>
-  );
+  return <DealFx seats={g.seats} myId={myId} title={`第 ${g.handNo} 局 · 打 ${levelName(g.level)}`}
+    sub={mine == null ? '每人 27 张' : mine ? '我方的级，我方坐庄' : '对方的级，对方坐庄'} onDone={onDone} />;
 }
 
 function HandResult({ g, myTeam, busy, onNext }) {

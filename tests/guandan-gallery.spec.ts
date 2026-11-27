@@ -50,7 +50,7 @@ test('掼蛋 screen gallery', async ({ browser }) => {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
   const ctx = await browser.newContext({ viewport: PORTRAIT, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await ctx.addInitScript(() => { (window as any).__gdBotMs = 99999; });
+  await ctx.addInitScript(() => { (window as any).__gdBotMs = 99999; (window as any).__dealFx = true; });
   const pages: Page[] = [];
   for (let i = 0; i < NAMES.length; i++) pages.push(await ctx.newPage());
   const [host] = pages;
@@ -106,9 +106,9 @@ test('掼蛋 screen gallery', async ({ browser }) => {
   for (const p of pages) await p.setViewportSize(LAND);
   section = '发牌';
   await host.getByTestId('start-game').click();
-  await expect(host.getByTestId('deal-intro')).toBeVisible();
+  await expect(host.getByTestId('deal-fx')).toBeVisible();
   await shot(host, '发牌动画', '第 1 局 · 打 2；1.6 秒后消失', { wait: 250 });
-  await expect(host.getByTestId('deal-intro')).toBeHidden({ timeout: 4000 });
+  await expect(host.getByTestId('deal-fx')).toBeHidden({ timeout: 8000 });
   await shot(P('西家'), '随机发牌后的手牌', '按级牌顺序从大到小排成一列一列；红心级牌（逢人配）金色带「配」');
 
   section = '出牌';
