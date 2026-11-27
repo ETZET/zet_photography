@@ -363,3 +363,7 @@
 .px-tag.pink { background: #f27aa8; color: #2a0a18; }
 .px-mode.on { box-shadow: 0 -3px 0 0 var(--line), 0 3px 0 0 var(--line), -3px 0 0 0 var(--line), 3px 0 0 0 var(--line), inset 0 0 0 3px #f27aa8; }
 .px-overlay .px-frame.love { box-shadow: 0 -4px 0 0 var(--line), 0 4px 0 0 var(--line), -4px 0 0 0 var(--line), 4px 0 0 0 var(--line), inset 0 0 0 4px #f27aa8; }
+
+/* full-screen card tables (room/immersive.js): no site header, no page scroll behind the table */
+html.px-immersive header { display: none; }
+html.px-immersive, html.px-immersive body { overflow: hidden; overscroll-behavior: none; height: 100%; }
