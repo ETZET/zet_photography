@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Who, useConfirm, Confetti } from '../avalon/ui';
 import { navigate } from '../../route';
 import { keepHostFirst } from '../room/seats';
-import { useImmersive } from '../room/immersive';
+import { useImmersive, fullscreenTip } from '../room/immersive';
 import { CardBack, CardRow, HandPicker } from '../cards/PlayingCard';
 import {
   SUITS, rankOf, suitOf, isJoker, isWild, isRed, cardLv, rankName, levelName, comboLabel, isBomb, TYPE_ZH,
@@ -409,6 +409,7 @@ function MenuPanel({ g, room, leave, onClose }) {
           <button className="px-btn red sm" onClick={() => leave(false)} data-testid="leave-game">离开房间</button>
           <button className="px-btn dark sm" onClick={onClose} data-testid="close-menu">关闭</button>
         </div>
+        {fullscreenTip() && <div className="fs-12 c-gold mb-2" data-testid="fs-tip">{fullscreenTip()}</div>}
         <div className="gd-scroll"><RuleCard rules={g.rules} /></div>
       </div>
     </div>
