@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Who, useConfirm, Confetti } from '../avalon/ui';
 import { navigate } from '../../route';
 import { keepHostFirst } from '../room/seats';
+import { useImmersive } from '../room/immersive';
 import { CardBack, CardRow, HandPicker } from '../cards/PlayingCard';
 import {
   SUITS, rankOf, suitOf, isJoker, isWild, isRed, cardLv, rankName, levelName, comboLabel, isBomb, TYPE_ZH,
@@ -64,6 +65,8 @@ const INTRO_MS = 1600;
 export default function Board({ room, myId, update, busy }) {
   const g = room.game;
   const landscape = useLandscape();
+  useImmersive();
+  const leave = useLeave(update, myId);
   const me = seatOf(g, myId);
   const [sel, setSel] = useState(() => new Set());
   const [hint, setHint] = useState(-1);
@@ -134,6 +137,7 @@ export default function Board({ room, myId, update, busy }) {
     <div className="gd-layer" data-testid="gd-board">
       <div className="gd-top">
         <div className="flex items-center gap-1 min-w-0">
+          <button className="gd-icon wide" onClick={() => leave(true)} data-testid="exit-game">退出</button>
           <button className="gd-icon" onClick={() => setPanel('menu')} aria-label="菜单" data-testid="menu">☰</button>
           <Levels g={g} myTeam={myTeam} />
         </div>
@@ -190,7 +194,7 @@ export default function Board({ room, myId, update, busy }) {
       {g.step === 'hand' && <HandResult g={g} myTeam={myTeam} busy={busy} onNext={() => act(x => nextHand(x))} />}
       {g.step === 'end' && <GameOver g={g} room={room} myId={myId} myTeam={myTeam} update={update} />}
       {panel === 'log' && <LogPanel g={g} onClose={() => setPanel(null)} />}
-      {panel === 'menu' && <MenuPanel g={g} room={room} myId={myId} update={update} onClose={() => setPanel(null)} />}
+      {panel === 'menu' && <MenuPanel g={g} room={room} leave={leave} onClose={() => setPanel(null)} />}
     </div>
   );
 }
@@ -375,10 +379,11 @@ function LogPanel({ g, onClose }) {
   );
 }
 
-function MenuPanel({ g, room, myId, update, onClose }) {
+/** Leave mid-game (the hand is void, everyone back to the lobby); toHall also leaves the game page. */
+function useLeave(update, myId) {
   const confirm = useConfirm();
-  const leave = async () => {
-    const ok = await confirm({ title: '离开房间？', body: '牌局进行中，你离开后这局作废，所有人回到大厅。', ok: '离开并结束这局', tone: 'danger' });
+  return async toHall => {
+    const ok = await confirm({ title: toHall ? '退出牌局？' : '离开房间？', body: '牌局进行中，你离开后这局作废，所有人回到大厅。', ok: '离开并结束这局', tone: 'danger' });
     if (!ok) return;
     await update(r => {
       r.players = r.players.filter(p => p.id !== myId);
@@ -390,15 +395,18 @@ function MenuPanel({ g, room, myId, update, onClose }) {
       r.game = null;
       return r;
     });
-    navigate({ page: 'game', game: 'guandan', room: null });
+    navigate(toHall ? { page: 'game' } : { page: 'game', game: 'guandan', room: null });
   };
+}
+
+function MenuPanel({ g, room, leave, onClose }) {
   return (
     <div className="px-overlay gd-over" onClick={onClose} data-testid="menu-panel">
       <div className="px-frame pad gd-panel" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <div className="px-title !mb-0 flex-1">房间 {room.code}</div>
           <button className="px-btn dark sm" onClick={() => navigate({ page: 'game' })}>◀ 游戏厅</button>
-          <button className="px-btn red sm" onClick={leave} data-testid="leave-game">离开房间</button>
+          <button className="px-btn red sm" onClick={() => leave(false)} data-testid="leave-game">离开房间</button>
           <button className="px-btn dark sm" onClick={onClose} data-testid="close-menu">关闭</button>
         </div>
         <div className="gd-scroll"><RuleCard rules={g.rules} /></div>

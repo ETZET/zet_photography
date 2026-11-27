@@ -6,6 +6,7 @@ import PixelSprite from '../pixel/PixelSprite';
 import { Who, useConfirm, Confetti } from '../avalon/ui';
 import { navigate } from '../../route';
 import { keepHostFirst } from '../room/seats';
+import { useImmersive } from '../room/immersive';
 import { CardRow, CardText, Hand, Suit } from './cards';
 import { PHONE } from './art';
 import {
@@ -65,6 +66,7 @@ export default function Board({ room, myId, update, busy }) {
   const me = g.seats.indexOf(myId);
   const ctx = ctxOf(g);
   const vp = useViewport();
+  useImmersive();
   const portrait = vp.h > vp.w && vp.w < 700;
   const [allowPortrait, setAllowPortrait] = useState(false);
   const [sel, setSel] = useState([]);
@@ -96,9 +98,9 @@ export default function Board({ room, myId, update, busy }) {
     return () => clearTimeout(t);
   }, [isHost, dealing, g.dealStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const leave = async () => {
+  const leave = async toHall => {
     setPanel(null);
-    const ok = await confirm({ title: '离开房间？', body: '游戏进行中，你离开后这一局会作废，所有人回到大厅。', ok: '离开并结束这局', tone: 'danger' });
+    const ok = await confirm({ title: toHall === true ? '退出牌局？' : '离开房间？', body: '游戏进行中，你离开后这一局会作废，所有人回到大厅。', ok: '离开并结束这局', tone: 'danger' });
     if (!ok) return;
     await update(r => {
       r.players = r.players.filter(p => p.id !== myId);
@@ -109,7 +111,7 @@ export default function Board({ room, myId, update, busy }) {
       r.phase = 'lobby'; r.game = null;
       return r;
     });
-    navigate({ page: 'game', game: 'shengji' });
+    navigate(toHall === true ? { page: 'game' } : { page: 'game', game: 'shengji' });
   };
   const toLobby = async () => {
     setPanel(null);
@@ -275,6 +277,7 @@ export default function Board({ room, myId, update, busy }) {
   return (
     <div className="sj-fs" data-testid="sj-board" data-step={g.step}>
       <div className="sj-bar" data-testid="topbar">
+        <button className="sj-chip" onClick={() => leave(true)} data-testid="exit-game">退出</button>
         <button className="sj-chip" onClick={() => setPanel('menu')} data-testid="menu" aria-label="菜单">☰</button>
         <span className="sj-chip">第 {g.hand} 局</span>
         {!dealing ? <SuitTag trump={g.trump} /> : <span className="sj-chip">亮主中</span>}
