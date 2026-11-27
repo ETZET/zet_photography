@@ -1,0 +1,26 @@
+/* DealFx (cards/DealFx.jsx): shuffle, then card backs fly round-robin to every seat */
+.dfx { position: fixed; inset: 0; z-index: 70; overflow: hidden; background: rgba(7,5,14,0.9); cursor: pointer;
+  animation: dfx-in 0.2s steps(2) both; -webkit-tap-highlight-color: transparent; }
+.dfx-deck { position: absolute; left: 50%; top: 50%; width: 30px; height: 42px; transform: translate(-50%, -50%); }
+.dfx-shuf { position: absolute; left: 0; top: 0; animation: dfx-shuf 0.65s steps(4) both; animation-delay: calc(var(--i) * 40ms); }
+.dfx-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); opacity: 0;
+  animation: dfx-fly 0.32s steps(5) both; }
+.dfx-card.mine { z-index: 2; }
+.dfx-name { position: absolute; transform: translate(-50%, calc(-50% + 34px)); white-space: nowrap; z-index: 3; pointer-events: none; }
+.dfx-name .px-who { margin: 0; }
+.dfx-me { display: inline-block; padding: 3px 8px 4px; background: var(--gold, #f5c542); color: #2a1a05; font-size: 14px; line-height: 1; }
+.dfx.mine .dfx-me { animation: px-glow 0.6s steps(2) infinite; }
+.dfx-caption { position: absolute; left: 50%; top: 50%; transform: translate(-50%, 38px); text-align: center; white-space: nowrap; pointer-events: none; }
+@keyframes dfx-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dfx-shuf {
+  0% { transform: none; }
+  25% { transform: translateX(calc((var(--i) - 1.5) * 14px)) rotate(calc((var(--i) - 1.5) * 8deg)); }
+  50% { transform: translateY(-6px); }
+  75% { transform: translateX(calc((1.5 - var(--i)) * 10px)); }
+  100% { transform: translateY(calc(var(--i) * -2px)); }
+}
+@keyframes dfx-fly {
+  0% { left: 50%; top: 50%; opacity: 1; transform: translate(-50%, -50%) rotate(0deg); }
+  100% { left: var(--x); top: var(--y); opacity: 1; transform: translate(-50%, -50%) rotate(var(--r)); }
+}
+@media (prefers-reduced-motion: reduce) { .dfx { display: none; } }

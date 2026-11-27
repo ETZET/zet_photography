@@ -8,6 +8,7 @@ import { useRoute, navigate } from '../../route';
 import { keepHostFirst } from './seats';
 import { PlayersProvider, ConfirmProvider, ConfirmOutlet, useConfirm } from '../avalon/ui';
 import Narrator from './Narrator';
+import DealFx from '../cards/DealFx';
 import { NAME_MAX_UNITS, clampName, nameUnits, randomName, uniqueName } from '../avalon/names';
 
 export { GAME_TITLES } from '../registry';
@@ -74,6 +75,15 @@ function RoomInner({ spec, onExit }) {
 
   const exit = () => onExit();
 
+  // deal effect when the game starts while I'm watching (lobby → game); a reload mid-game skips it
+  const [dealFx, setDealFx] = useState(false);
+  const lastPhase = useRef(room?.phase);
+  useEffect(() => {
+    const was = lastPhase.current;
+    lastPhase.current = room?.phase;
+    if (was === 'lobby' && room?.phase === 'game' && room.game && !spec.ownDealFx) setDealFx(true);
+  }, [room?.phase, room?.game, spec.ownDealFx]);
+
   // Refreshing / closing mid-game is fine (you rejoin by link), but warn anyway.
   const inGame = room?.phase === 'game' && room.game?.step !== 'end';
   useEffect(() => {
@@ -133,6 +143,9 @@ function RoomInner({ spec, onExit }) {
           {room.phase === 'game' && room.game
             ? <Board room={room} myId={myId} update={update} busy={busy} />
             : <Lobby room={room} myId={myId} update={update} busy={busy} />}
+          {dealFx && room.phase === 'game' && room.game?.seats && (
+            <DealFx seats={room.game.seats} myId={myId} title={`${spec.title} · 发牌`} sub={`${room.game.seats.length} 人`} onDone={() => setDealFx(false)} />
+          )}
           <ConfirmOutlet />
         </PlayersProvider>
       ) : (

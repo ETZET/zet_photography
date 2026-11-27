@@ -58,7 +58,7 @@ test('掼蛋: four phones play a hand + tribute', async ({ browser }) => {
   const pageOf = (g: G, seat: number) => pages[ids.indexOf(g.seats[seat])];
   let g = await game(host);
   expect(g.hands.map(h => h.length)).toEqual([27, 27, 27, 27]);
-  await expect(host.getByTestId('deal-intro')).toBeHidden({ timeout: 5000 });
+  await expect(host.getByTestId('deal-fx')).toBeHidden({ timeout: 5000 });
 
   async function playHand() {
     let guard = 0;
@@ -104,7 +104,7 @@ test('掼蛋: four phones play a hand + tribute', async ({ browser }) => {
   expect(g.hands.map(h => h.length)).toEqual([27, 27, 27, 27]);
   // an illegal selection is flagged and can't be played
   const p = pageOf(g, g.turn!);
-  await p.getByTestId('deal-intro').waitFor({ state: 'hidden' });
+  await p.getByTestId('deal-fx').waitFor({ state: 'hidden' });
   const cards = p.locator('[data-testid=hand] [data-cid]');
   await cards.nth(0).click({ position: { x: 5, y: 5 } });
   await cards.nth(26).click({ position: { x: 5, y: 5 } });

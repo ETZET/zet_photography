@@ -21,6 +21,7 @@ const SPEC = {
     '头游方升级（双上 +3），打过 A 的一队获胜',
   ],
   newRoom: () => ({ rules: { ...DEFAULT_RULES } }),
+  ownDealFx: true, // every hand plays its own deal effect (Board)
   Lobby, Board, useBots,
 };
 
