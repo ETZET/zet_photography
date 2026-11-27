@@ -1,0 +1,8 @@
+{
+  "name": "ET Zhou · 游戏厅",
+  "short_name": "游戏厅",
+  "start_url": "/game",
+  "display": "fullscreen",
+  "background_color": "#0e0a1c",
+  "theme_color": "#0e0a1c"
+}

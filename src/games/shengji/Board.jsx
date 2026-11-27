@@ -6,7 +6,7 @@ import PixelSprite from '../pixel/PixelSprite';
 import { Who, useConfirm, Confetti } from '../avalon/ui';
 import { navigate } from '../../route';
 import { keepHostFirst } from '../room/seats';
-import { useImmersive } from '../room/immersive';
+import { useImmersive, fullscreenTip } from '../room/immersive';
 import { CardRow, CardText, Hand, Suit } from './cards';
 import { PHONE } from './art';
 import {
@@ -312,6 +312,7 @@ export default function Board({ room, myId, update, busy }) {
         <div className="px-overlay" onClick={() => setPanel(null)} data-testid="menu-panel">
           <div className="px-frame pad gold max-w-[420px] w-full" onClick={e => e.stopPropagation()}>
             <div className="px-title">菜单 · 房间 {room.code}</div>
+            {fullscreenTip() && <div className="fs-12 c-gold mb-2" data-testid="fs-tip">{fullscreenTip()}</div>}
             <div className="grid grid-cols-2">
               <button className="px-btn blue" onClick={() => setPanel('rules')} data-testid="show-rules">本局规则</button>
               <button className="px-btn dark" onClick={() => setPanel(null)}>继续</button>

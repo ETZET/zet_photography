@@ -366,4 +366,9 @@
 
 /* full-screen card tables (room/immersive.js): no site header, no page scroll behind the table */
 html.px-immersive header { display: none; }
-html.px-immersive, html.px-immersive body { overflow: hidden; overscroll-behavior: none; height: 100%; }
+/* no scroll lock: Safari only tucks its address / tab bar away when the page scrolls, so leave
+   a little room behind the fixed table — one swipe up on the felt hides the bars */
+html.px-immersive, html.px-immersive body { background: #0e0a1c; overscroll-behavior-y: none; }
+html.px-immersive body { padding: 0; min-height: calc(100vh + 160px); }
+/* iOS WebKit clips a fixed layer to an overflow-hidden ancestor: let the table escape .px-root */
+html.px-immersive .px-root { overflow: visible; }
