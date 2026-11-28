@@ -9,10 +9,12 @@ import { keepHostFirst } from '../room/seats';
 import { useImmersive, fullscreenTip } from '../room/immersive';
 import { CardRow, CardText, Hand, Suit } from './cards';
 import { PHONE } from './art';
+import { CardBack } from '../cards/PlayingCard';
+import { useFlick } from '../cards/DealFx';
 import {
   SUIT_SYM, SUIT_ZH, VARIANTS, KIND_ZH, BID_ZH, KITTY_SIZE, HAND_SIZE,
   ctxOf, sortHand, teamOf, isDefender, turnOf, playError, formatOf, leadKind, componentCount, hint, suitOf,
-  dealtCount, dealEnd, bidDeadline, visibleHand, bidOptions, declare, pass, finishDeal, bury, play, nextHand, rankZh,
+  dealtCount, dealEnd, dealMs, bidDeadline, visibleHand, bidOptions, declare, pass, finishDeal, bury, play, nextHand, rankZh,
   sumPoints, winnerIndex, newGame,
 } from './shengjiRules';
 
@@ -58,6 +60,38 @@ function useWakeLock(on) {
 const SuitTag = ({ trump }) => (trump
   ? <span className="sj-chip gold" data-testid="trump"><span className="sj-suitbox"><Suit s={trump} scale={1.5} /></span>主</span>
   : <span className="sj-chip gold" data-testid="trump">无主</span>);
+
+/**
+ * The deal on the felt: a deck in the middle and one card back flying to each
+ * player in turn (you last in every round, so your new card shows as it lands),
+ * with a soft flick per card.
+ */
+function DealFlyer({ g }) {
+  const per = dealMs(g) / 4;
+  const total = HAND_SIZE * 4;
+  const idxAt = () => Math.floor((Date.now() - g.dealStart) / per);
+  const [idx, setIdx] = useState(idxAt);
+  const flick = useFlick();
+  useEffect(() => {
+    let t;
+    const tick = () => {
+      const i = idxAt();
+      setIdx(i);
+      if (i >= 0 && i < total) flick();
+      if (i < total) t = setTimeout(tick, Math.max(20, g.dealStart + (i + 1) * per - Date.now()));
+    };
+    t = setTimeout(tick, Math.max(0, g.dealStart + (idxAt() + 1) * per - Date.now()));
+    return () => clearTimeout(t);
+  }, [g.dealStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (idx >= total) return null;
+  const to = ['right', 'top', 'left', 'me'][((idx % 4) + 4) % 4];
+  return (
+    <div className="sj-deck" aria-hidden>
+      <CardBack w={22} count={Math.max(0, total - idx - 1) + KITTY_SIZE} />
+      {idx >= 0 && <span key={idx} className={`sj-fly to-${to}`} style={{ '--d': `${Math.min(per, 600)}ms` }}><CardBack w={22} /></span>}
+    </div>
+  );
+}
 
 export default function Board({ room, myId, update, busy }) {
   const confirm = useConfirm();
@@ -138,8 +172,8 @@ export default function Board({ room, myId, update, busy }) {
     const done = now >= dealEnd(g);
     const passed = g.passes.includes(me);
     status = done
-      ? <span className="c-dim">{passed ? '已过，等其他人…' : `没人再亮就开始（${Math.max(0, Math.ceil((bidDeadline(g) - now) / 1000))} 秒）`}</span>
-      : <span className="c-dim">发牌中 {dealt}/{HAND_SIZE}，有级牌 {rankZh(g.level)} 就能亮主</span>;
+      ? <span className="c-dim">{passed ? '已过，等其他人…' : `发完了：还要亮主 / 反主吗？没人再亮就开始（${Math.max(0, Math.ceil((bidDeadline(g) - now) / 1000))} 秒）`}</span>
+      : <span className="c-dim">发牌中 {dealt}/{HAND_SIZE}，一人一张；拿到级牌 {rankZh(g.level)} 就能亮主</span>;
     actions = btn(passed ? '已过' : '不亮', () => act(x => pass(x, me, Date.now())), { tone: 'dark', disabled: !done || passed, id: 'pass' });
   } else if (g.step === 'bury') {
     if (g.dealer === me) {
@@ -212,12 +246,18 @@ export default function Board({ room, myId, update, busy }) {
       const opts = bidOptions(g, me, visibleHand(g, me, now));
       return (
         <div className="sj-centerbox" data-testid="deal-center">
+          {now < dealEnd(g) && <DealFlyer g={g} />}
           <div className="sj-dealbar" aria-hidden><i style={{ width: `${(dealt / HAND_SIZE) * 100}%` }} /></div>
           <div className="fs-12">{g.bid
             ? <><Who id={g.seats[g.bid.seat]} /> {g.bid.suit ? <>亮 <Suit s={g.bid.suit} scale={1.5} color="#f5c542" /> {g.bid.strength >= 2 ? '一对' : ''}</> : `${BID_ZH[g.bid.strength]}：无主`}</>
             : <span className="c-dim">还没人亮主 · 打 {rankZh(g.level)}</span>}</div>
           {opts.length > 0 && (
-            <div className="sj-bids" data-testid="bids">
+            <div className="c-gold fs-12 sj-ask" data-testid="bid-ask">{g.bid
+              ? (g.bid.seat === me ? '要加固吗？' : '你的牌更大，要反主吗？')
+              : <>你有级牌 {rankZh(g.level)}，要亮主吗？</>}</div>
+          )}
+          {opts.length > 0 && (
+            <div className="sj-bids pulse" data-testid="bids">
               {opts.map(o => (
                 <button key={`${o.suit}${o.strength}`} className="px-btn blue sm" disabled={busy} onClick={() => act(x => declare(x, me, o, Date.now()))}
                   data-testid={`bid-${o.suit || 'NT'}-${o.strength}`}>

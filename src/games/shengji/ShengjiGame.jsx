@@ -19,6 +19,7 @@ const SPEC = {
   art: fan.map(id => <div key={id} className="relative" style={{ width: 44, height: 62 }}><Card id={id} style={{ left: 0, top: 0 }} /></div>),
   howTo: ['起个名字，创建房间，把链接发给另外 3 个朋友', '对面坐的是队友；房主选玩法（能不能甩牌、甩牌失败怎么罚、扣底翻倍…）', '把手机横过来；发牌时有级牌就亮主，庄家扣底', '闲家抓够 80 分上台；先打过 A 的一队赢'],
   newRoom: () => ({ config: { rules: { ...DEFAULT_RULES } } }),
+  ownDealFx: true, // the real deal on the table is the ceremony (one card each, with time to 亮主)
   Lobby, Board, useBots,
 };
 

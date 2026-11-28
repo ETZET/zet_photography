@@ -11,7 +11,7 @@ const SHUFFLE_MS = 650;
 const HOLD_MS = 900;
 
 /** One short filtered-noise "flick" per card; silent if audio isn't allowed yet. */
-function useFlick() {
+export function useFlick() {
   const ctx = useRef(null);
   useEffect(() => () => { ctx.current?.close?.().catch(() => {}); }, []);
   return (at = 0) => {

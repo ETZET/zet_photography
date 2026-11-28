@@ -113,3 +113,17 @@ button.sj-chip { cursor: pointer; }
 }
 @media (max-width: 560px) { .sj-result { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .sj-card, .sj-banner, .sj-spot.turn .px-who, .sj-phone { animation: none !important; } }
+
+/* deal on the felt */
+.sj-deck { position: relative; height: 34px; display: flex; justify-content: center; align-items: center; margin-bottom: 2px; }
+.sj-fly { position: absolute; left: 50%; top: 50%; translate: -50% -50%; pointer-events: none; z-index: 5;
+  animation: sj-fly var(--d, 250ms) cubic-bezier(.3,.7,.4,1) both; }
+.sj-fly.to-top { --tx: 0; --ty: -28vh; }
+.sj-fly.to-left { --tx: -36vw; --ty: 0; }
+.sj-fly.to-right { --tx: 36vw; --ty: 0; }
+.sj-fly.to-me { --tx: 0; --ty: 38vh; }
+@keyframes sj-fly { from { transform: translate(0, 0) rotate(0); opacity: 1; } 85% { opacity: 1; } to { transform: translate(var(--tx), var(--ty)) rotate(200deg); opacity: 0; } }
+.sj-ask { animation: px-pop 0.3s steps(3) both; }
+.sj-bids.pulse .px-btn { animation: sj-pulse 1s steps(2) infinite; }
+@keyframes sj-pulse { 50% { box-shadow: 0 0 0 3px var(--gold); } }
+@media (prefers-reduced-motion: reduce) { .sj-fly, .sj-bids.pulse .px-btn { animation: none; } .sj-fly { display: none; } }

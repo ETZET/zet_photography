@@ -20,8 +20,8 @@ export const rankZh = r => (r === 'T' ? '10' : r);
 export const TOTAL_POINTS = 200;
 export const HAND_SIZE = 25;
 export const KITTY_SIZE = 8;
-export const DEAL_MS = 280;       // per round of four cards
-export const BID_GRACE_MS = 8000; // last chance to declare after the deal
+export const DEAL_MS = 1000;      // per round of four cards (one card each, in turn)
+export const BID_GRACE_MS = 15000; // last chance to declare / 反主 after the deal
 
 // ------------------------------------------------------------- variants ---
 // The first option of each is the recommended default (★ in the lobby).
